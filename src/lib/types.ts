@@ -1,0 +1,61 @@
+export interface Item {
+  id: string
+  name: string
+  category: string
+  unit: string
+  price_per_unit: number
+  stock: number
+  min_stock: number
+  created_at: string
+}
+
+export interface Menu {
+  id: string
+  name: string
+  category: string
+  price: number
+  is_active: boolean
+  created_at: string
+  cogs?: number
+  margin?: number
+  recipes?: MenuRecipe[]
+}
+
+export interface MenuRecipe {
+  id: string
+  menu_id: string
+  item_id: string
+  quantity: number
+  unit: string
+  item?: Item
+}
+
+export interface Transaction {
+  id: string
+  date: string
+  type: 'in' | 'out'
+  item_id: string
+  quantity: number
+  notes: string
+  created_at: string
+  item?: Item
+}
+
+export interface Sale {
+  id: string
+  date: string
+  menu_id: string
+  quantity: number
+  total_price: number
+  created_at: string
+  menu?: Menu
+}
+
+export interface Expense {
+  id: string
+  date: string
+  category: string
+  description: string
+  amount: number
+  created_at: string
+}
