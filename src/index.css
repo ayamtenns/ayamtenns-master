@@ -1,57 +1,39 @@
-@import '@fontsource/bebas-neue';
-@import '@fontsource/instrument-sans';
-@import '@fontsource/instrument-sans/400.css';
-@import '@fontsource/instrument-sans/500.css';
-@import '@fontsource/instrument-sans/600.css';
 @import "tailwindcss";
 
 @theme {
-  --color-bg: #0d0c0a;
-  --color-surface: #171614;
-  --color-surface-2: #1f1e1b;
-  --color-border: #2a2825;
-  --color-accent: #e5420d;
-  --color-accent-hover: #ff5520;
-  --color-gold: #d4a017;
-  --color-text: #e8e4dc;
-  --color-text-muted: #8a867d;
-  --color-success: #22c55e;
-  --color-warning: #f59e0b;
-  --color-danger: #ef4444;
+  --color-bg:        #F2F2F0;
+  --color-surface:   #FFFFFF;
+  --color-surface-2: #F8F8F6;
+  --color-border:    #E8E8E6;
+  --color-border-2:  #EFEFED;
+  --color-text:      #0E0E0E;
+  --color-muted:     #6B6B6B;
+  --color-accent:    #D91C1C;
+  --color-accent-h:  #B51515;
+  --color-success:   #16A34A;
+  --color-warning:   #D97706;
+  --color-danger:    #DC2626;
 
-  --font-heading: 'Bebas Neue', sans-serif;
-  --font-body: 'Instrument Sans', sans-serif;
+  --font-heading: 'Archivo Black', sans-serif;
+  --font-body:    'Inter Tight', sans-serif;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 body {
-  background-color: #0d0c0a;
-  color: #e8e4dc;
-  font-family: 'Instrument Sans', sans-serif;
+  background-color: #F2F2F0;
+  color: #0E0E0E;
+  font-family: 'Inter Tight', sans-serif;
   margin: 0;
   padding: 0;
   -webkit-font-smoothing: antialiased;
 }
 
-#root {
-  width: 100%;
-  min-height: 100svh;
-}
+#root { width: 100%; min-height: 100svh; }
 
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: #171614;
-}
-::-webkit-scrollbar-thumb {
-  background: #2a2825;
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #8a867d;
-}
+::selection { background: #D91C1C; color: #fff; }
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: #F2F2F0; }
+::-webkit-scrollbar-thumb { background: #D8D8D6; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #ABABAB; }

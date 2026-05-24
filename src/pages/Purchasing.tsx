@@ -7,98 +7,82 @@ import { Plus, X } from 'lucide-react'
 function fmt(n: number) {
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n)
 }
+const inputStyle = { backgroundColor: '#F8F8F6', border: '1px solid #E8E8E6', color: '#0E0E0E' }
 
 interface Purchase {
-  id: string
-  date: string
-  item_id: string
-  quantity: number
-  notes: string
-  created_at: string
+  id: string; date: string; item_id: string; quantity: number; notes: string; created_at: string
   item?: { name: string; unit: string; price_per_unit: number }
 }
 
-interface PurchaseModalProps {
-  items: Item[]
-  onClose: () => void
-  onSave: () => void
-}
-
-function PurchaseModal({ items, onClose, onSave }: PurchaseModalProps) {
+function PurchaseModal({ items, onClose, onSave }: { items: Item[]; onClose: () => void; onSave: () => void }) {
   const [itemId, setItemId] = useState('')
-  const [qty, setQty] = useState('')
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
-  const [notes, setNotes] = useState('')
+  const [qty, setQty]       = useState('')
+  const [date, setDate]     = useState(new Date().toISOString().split('T')[0])
+  const [notes, setNotes]   = useState('')
   const [saving, setSaving] = useState(false)
-
-  const selectedItem = items.find(i => i.id === itemId)
+  const selected = items.find(i => i.id === itemId)
 
   async function handleSave() {
     if (!itemId || !qty) return
     setSaving(true)
     const qtyNum = parseFloat(qty)
-    await supabase.from('transactions').insert({
-      date, type: 'in', item_id: itemId, quantity: qtyNum, notes: notes.trim() || 'Pembelian',
-    })
-    await supabase.from('items').update({ stock: (selectedItem?.stock ?? 0) + qtyNum }).eq('id', itemId)
-    setSaving(false)
-    onSave()
+    await supabase.from('transactions').insert({ date, type: 'in', item_id: itemId, quantity: qtyNum, notes: notes.trim() || 'Pembelian' })
+    await supabase.from('items').update({ stock: (selected?.stock ?? 0) + qtyNum }).eq('id', itemId)
+    setSaving(false); onSave()
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}>
-      <div style={{ backgroundColor: '#171614', border: '1px solid #2a2825' }} className="w-full max-w-md rounded-xl">
-        <div style={{ borderBottom: '1px solid #2a2825' }} className="flex items-center justify-between px-6 py-4">
-          <h2 style={{ fontFamily: "'Bebas Neue', sans-serif", color: '#e8e4dc' }} className="text-xl tracking-wider">Catat Pembelian</h2>
-          <button onClick={onClose} style={{ color: '#8a867d' }} className="hover:text-white transition-colors"><X size={18} /></button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+      <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E8E8E6', borderRadius: 16 }} className="w-full max-w-md">
+        <div style={{ borderBottom: '1px solid #E8E8E6' }} className="flex items-center justify-between px-6 py-4">
+          <h2 style={{ fontFamily: "'Archivo Black', sans-serif", color: '#0E0E0E', fontSize: 16 }}>Catat Pembelian</h2>
+          <button onClick={onClose} style={{ color: '#6B6B6B' }} className="hover:text-[#0E0E0E] transition-colors"><X size={18} /></button>
         </div>
         <div className="p-6 space-y-4">
           <div>
-            <label style={{ color: '#8a867d' }} className="block text-xs mb-1.5 uppercase tracking-wider">Tanggal</label>
-            <input type="date" value={date} onChange={e => setDate(e.target.value)}
-              style={{ backgroundColor: '#0d0c0a', border: '1px solid #2a2825', color: '#e8e4dc' }}
-              className="w-full px-3 py-2.5 rounded-lg text-sm outline-none focus:border-[#e5420d] transition-colors" />
+            <label style={{ color: '#6B6B6B' }} className="block text-xs mb-1.5 uppercase tracking-wider font-medium">Tanggal</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} style={inputStyle}
+              className="w-full px-3 py-2.5 rounded-xl text-sm outline-none focus:border-[#D91C1C] transition-colors" />
           </div>
           <div>
-            <label style={{ color: '#8a867d' }} className="block text-xs mb-1.5 uppercase tracking-wider">Barang *</label>
+            <label style={{ color: '#6B6B6B' }} className="block text-xs mb-1.5 uppercase tracking-wider font-medium">Barang *</label>
             <select value={itemId} onChange={e => setItemId(e.target.value)}
-              style={{ backgroundColor: '#0d0c0a', border: '1px solid #2a2825', color: itemId ? '#e8e4dc' : '#8a867d' }}
-              className="w-full px-3 py-2.5 rounded-lg text-sm outline-none focus:border-[#e5420d] transition-colors">
+              style={{ ...inputStyle, color: itemId ? '#0E0E0E' : '#ABABAB' }}
+              className="w-full px-3 py-2.5 rounded-xl text-sm outline-none focus:border-[#D91C1C] transition-colors">
               <option value="">Pilih barang...</option>
               {items.map(i => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
             </select>
           </div>
-          {selectedItem && (
-            <div style={{ backgroundColor: '#0d0c0a', border: '1px solid #1e1d1a' }} className="rounded-lg p-3 text-xs" >
-              <span style={{ color: '#8a867d' }}>Harga referensi: </span>
-              <span style={{ color: '#d4a017' }}>{fmt(selectedItem.price_per_unit)}/{selectedItem.unit}</span>
-              <span style={{ color: '#8a867d' }}> · Stok saat ini: {selectedItem.stock} {selectedItem.unit}</span>
+          {selected && (
+            <div style={{ backgroundColor: '#F8F8F6', border: '1px solid #EFEFED', borderRadius: 10 }} className="px-3 py-2 text-xs">
+              <span style={{ color: '#6B6B6B' }}>Harga ref: </span>
+              <span style={{ color: '#D97706', fontWeight: 600 }}>{fmt(selected.price_per_unit)}/{selected.unit}</span>
+              <span style={{ color: '#ABABAB' }}> · Stok: {selected.stock} {selected.unit}</span>
             </div>
           )}
           <div>
-            <label style={{ color: '#8a867d' }} className="block text-xs mb-1.5 uppercase tracking-wider">Jumlah ({selectedItem?.unit ?? '—'}) *</label>
-            <input type="number" value={qty} onChange={e => setQty(e.target.value)} min="0" step="0.001"
-              style={{ backgroundColor: '#0d0c0a', border: '1px solid #2a2825', color: '#e8e4dc' }}
-              className="w-full px-3 py-2.5 rounded-lg text-sm outline-none focus:border-[#e5420d] transition-colors" />
+            <label style={{ color: '#6B6B6B' }} className="block text-xs mb-1.5 uppercase tracking-wider font-medium">
+              Jumlah ({selected?.unit ?? '—'}) *
+            </label>
+            <input type="number" value={qty} onChange={e => setQty(e.target.value)} min="0" step="0.001" style={inputStyle}
+              className="w-full px-3 py-2.5 rounded-xl text-sm outline-none focus:border-[#D91C1C] transition-colors" />
           </div>
-          {selectedItem && qty && (
-            <div style={{ backgroundColor: '#0d0c0a', border: '1px solid #1e1d1a' }} className="rounded-lg p-3 text-xs">
-              <span style={{ color: '#8a867d' }}>Estimasi biaya: </span>
-              <span style={{ color: '#22c55e' }}>{fmt(selectedItem.price_per_unit * parseFloat(qty || '0'))}</span>
+          {selected && qty && (
+            <div style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 10 }} className="px-3 py-2 text-xs text-center">
+              <span style={{ color: '#6B6B6B' }}>Estimasi biaya: </span>
+              <span style={{ color: '#16A34A', fontWeight: 700, fontSize: 14 }}>{fmt(selected.price_per_unit * parseFloat(qty || '0'))}</span>
             </div>
           )}
           <div>
-            <label style={{ color: '#8a867d' }} className="block text-xs mb-1.5 uppercase tracking-wider">Catatan</label>
-            <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Supplier, dll..."
-              style={{ backgroundColor: '#0d0c0a', border: '1px solid #2a2825', color: '#e8e4dc' }}
-              className="w-full px-3 py-2.5 rounded-lg text-sm outline-none focus:border-[#e5420d] transition-colors" />
+            <label style={{ color: '#6B6B6B' }} className="block text-xs mb-1.5 uppercase tracking-wider font-medium">Catatan</label>
+            <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Supplier, dll..." style={inputStyle}
+              className="w-full px-3 py-2.5 rounded-xl text-sm outline-none focus:border-[#D91C1C] transition-colors" />
           </div>
-          <div className="flex gap-3 pt-2">
-            <button onClick={onClose} style={{ border: '1px solid #2a2825', color: '#8a867d' }}
-              className="flex-1 py-2.5 rounded-lg text-sm hover:text-white transition-colors">Batal</button>
-            <button onClick={handleSave} disabled={saving || !itemId || !qty}
-              style={{ backgroundColor: '#e5420d' }}
-              className="flex-1 py-2.5 rounded-lg text-white text-sm font-semibold hover:bg-[#ff5520] transition-colors disabled:opacity-60">
+          <div className="flex gap-3 pt-1">
+            <button onClick={onClose} style={{ border: '1px solid #E8E8E6', color: '#6B6B6B' }}
+              className="flex-1 py-2.5 rounded-xl text-sm font-medium hover:text-[#0E0E0E] transition-colors">Batal</button>
+            <button onClick={handleSave} disabled={saving || !itemId || !qty} style={{ backgroundColor: '#D91C1C' }}
+              className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:bg-[#B51515] transition-colors disabled:opacity-60">
               {saving ? 'Menyimpan...' : 'Simpan'}
             </button>
           </div>
@@ -110,8 +94,8 @@ function PurchaseModal({ items, onClose, onSave }: PurchaseModalProps) {
 
 export default function Purchasing() {
   const [purchases, setPurchases] = useState<Purchase[]>([])
-  const [items, setItems] = useState<Item[]>([])
-  const [loading, setLoading] = useState(true)
+  const [items, setItems]         = useState<Item[]>([])
+  const [loading, setLoading]     = useState(true)
   const [showModal, setShowModal] = useState(false)
 
   const loadData = useCallback(async () => {
@@ -120,16 +104,15 @@ export default function Purchasing() {
       supabase.from('transactions').select('*, item:items(name,unit,price_per_unit)').eq('type', 'in').order('date', { ascending: false }).limit(200),
       supabase.from('items').select('*').order('name'),
     ])
-    setPurchases((txData ?? []) as Purchase[])
-    setItems(itemsData ?? [])
+    setPurchases((txData ?? []) as Purchase[]); setItems(itemsData ?? [])
     setLoading(false)
   }, [])
 
   useEffect(() => { loadData() }, [loadData])
 
-  const totalThisMonth = purchases
-    .filter(p => p.date.startsWith(new Date().toISOString().slice(0, 7)))
-    .reduce((s, p) => s + (p.item?.price_per_unit ?? 0) * p.quantity, 0)
+  const thisMonth   = new Date().toISOString().slice(0, 7)
+  const monthPurch  = purchases.filter(p => p.date.startsWith(thisMonth))
+  const totalMonth  = monthPurch.reduce((s, p) => s + (p.item?.price_per_unit ?? 0) * p.quantity, 0)
 
   return (
     <div className="min-h-screen">
@@ -137,57 +120,52 @@ export default function Purchasing() {
         title="Purchasing"
         subtitle="Catat dan pantau pembelian bahan baku"
         action={
-          <button onClick={() => setShowModal(true)}
-            style={{ backgroundColor: '#e5420d' }}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold hover:bg-[#ff5520] transition-colors">
-            <Plus size={15} /> Catat Pembelian
+          <button onClick={() => setShowModal(true)} style={{ backgroundColor: '#D91C1C' }}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold hover:bg-[#B51515] transition-colors">
+            <Plus size={14} /> Catat Pembelian
           </button>
         }
       />
 
-      <div className="grid grid-cols-3 gap-4 px-8 py-5" style={{ borderBottom: '1px solid #1e1d1a' }}>
+      <div className="grid grid-cols-3 gap-4 px-8 py-5" style={{ borderBottom: '1px solid #E8E8E6' }}>
         {[
-          { label: 'Total Pembelian Bulan Ini', value: fmt(totalThisMonth), color: '#d4a017' },
-          { label: 'Jumlah Transaksi', value: purchases.filter(p => p.date.startsWith(new Date().toISOString().slice(0, 7))).length, color: '#e8e4dc' },
-          { label: 'Total Transaksi', value: purchases.length, color: '#8a867d' },
+          { label: 'Total Pembelian Bulan Ini', value: fmt(totalMonth),      color: '#D97706' },
+          { label: 'Transaksi Bulan Ini',       value: monthPurch.length,    color: '#0E0E0E' },
+          { label: 'Total Transaksi',            value: purchases.length,    color: '#6B6B6B' },
         ].map(s => (
-          <div key={s.label} style={{ backgroundColor: '#171614', border: '1px solid #2a2825' }} className="rounded-xl p-4">
-            <div style={{ color: '#8a867d' }} className="text-xs uppercase tracking-wider mb-1">{s.label}</div>
-            <div style={{ color: s.color }} className="text-2xl font-bold">{s.value}</div>
+          <div key={s.label} style={{ backgroundColor: '#FFFFFF', border: '1px solid #E8E8E6' }} className="rounded-2xl p-4">
+            <div style={{ color: '#6B6B6B' }} className="text-xs uppercase tracking-wider mb-1 font-medium">{s.label}</div>
+            <div style={{ color: s.color, fontFamily: "'Archivo Black', sans-serif" }} className="text-2xl">{s.value}</div>
           </div>
         ))}
       </div>
 
       <div className="px-8 py-5">
         {loading ? (
-          <div style={{ color: '#8a867d' }} className="py-20 text-center text-sm">Memuat data...</div>
+          <div style={{ color: '#6B6B6B' }} className="py-20 text-center text-sm">Memuat data...</div>
         ) : (
-          <div style={{ border: '1px solid #1e1d1a' }} className="rounded-xl overflow-hidden">
+          <div style={{ border: '1px solid #E8E8E6', borderRadius: 16, overflow: 'hidden' }}>
             <table className="w-full">
               <thead>
-                <tr style={{ backgroundColor: '#0d0c0a', borderBottom: '1px solid #1e1d1a' }}>
+                <tr style={{ backgroundColor: '#F8F8F6', borderBottom: '1px solid #E8E8E6' }}>
                   {['Tanggal', 'Barang', 'Jumlah', 'Harga/Unit', 'Total', 'Catatan'].map(h => (
-                    <th key={h} style={{ color: '#8a867d' }} className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-left">{h}</th>
+                    <th key={h} style={{ color: '#6B6B6B' }} className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-left">{h}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody style={{ backgroundColor: '#171614' }}>
+              <tbody style={{ backgroundColor: '#FFFFFF' }}>
                 {purchases.map(p => (
-                  <tr key={p.id} style={{ borderBottom: '1px solid #1e1d1a' }} className="hover:bg-[#1a1917] transition-colors">
-                    <td className="px-4 py-3" style={{ color: '#8a867d' }}><span className="text-sm">{p.date}</span></td>
-                    <td className="px-4 py-3" style={{ color: '#e8e4dc' }}><span className="text-sm">{p.item?.name}</span></td>
-                    <td className="px-4 py-3" style={{ color: '#e8e4dc' }}>
-                      <span className="text-sm">{p.quantity} {p.item?.unit}</span>
-                    </td>
-                    <td className="px-4 py-3" style={{ color: '#d4a017' }}><span className="text-sm">{fmt(p.item?.price_per_unit ?? 0)}</span></td>
-                    <td className="px-4 py-3" style={{ color: '#22c55e' }}>
-                      <span className="text-sm font-medium">{fmt((p.item?.price_per_unit ?? 0) * p.quantity)}</span>
-                    </td>
-                    <td className="px-4 py-3" style={{ color: '#8a867d' }}><span className="text-sm">{p.notes || '—'}</span></td>
+                  <tr key={p.id} style={{ borderBottom: '1px solid #F0F0EE' }} className="hover:bg-[#FAFAFA] transition-colors">
+                    <td className="px-4 py-3" style={{ color: '#6B6B6B' }}><span className="text-sm">{p.date}</span></td>
+                    <td className="px-4 py-3" style={{ color: '#0E0E0E' }}><span className="text-sm font-medium">{p.item?.name}</span></td>
+                    <td className="px-4 py-3" style={{ color: '#0E0E0E' }}><span className="text-sm">{p.quantity} {p.item?.unit}</span></td>
+                    <td className="px-4 py-3" style={{ color: '#D97706' }}><span className="text-sm">{fmt(p.item?.price_per_unit ?? 0)}</span></td>
+                    <td className="px-4 py-3" style={{ color: '#16A34A' }}><span className="text-sm font-semibold">{fmt((p.item?.price_per_unit ?? 0) * p.quantity)}</span></td>
+                    <td className="px-4 py-3" style={{ color: '#6B6B6B' }}><span className="text-sm">{p.notes || '—'}</span></td>
                   </tr>
                 ))}
                 {purchases.length === 0 && (
-                  <tr><td colSpan={6} className="px-4 py-10 text-center" style={{ color: '#8a867d' }}>Belum ada data pembelian.</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-12 text-center" style={{ color: '#ABABAB' }}>Belum ada data pembelian.</td></tr>
                 )}
               </tbody>
             </table>

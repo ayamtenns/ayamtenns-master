@@ -1,47 +1,35 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard,
-  UtensilsCrossed,
-  Package,
-  ShoppingCart,
-  TrendingUp,
-  DollarSign,
-  LogOut,
+  LayoutDashboard, UtensilsCrossed, Package,
+  ShoppingCart, TrendingUp, DollarSign, LogOut,
 } from 'lucide-react'
 import { logout } from '../lib/auth'
 
 const navItems = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/menu', label: 'Menu', icon: UtensilsCrossed },
-  { to: '/inventory', label: 'Inventory', icon: Package },
-  { to: '/purchasing', label: 'Purchasing', icon: ShoppingCart },
-  { to: '/sales', label: 'Sales', icon: TrendingUp },
-  { to: '/financial', label: 'Financial', icon: DollarSign },
+  { to: '/',           label: 'Dashboard',  icon: LayoutDashboard },
+  { to: '/menu',       label: 'Menu',        icon: UtensilsCrossed },
+  { to: '/inventory',  label: 'Inventory',   icon: Package },
+  { to: '/purchasing', label: 'Purchasing',  icon: ShoppingCart },
+  { to: '/sales',      label: 'Sales',       icon: TrendingUp },
+  { to: '/financial',  label: 'Financial',   icon: DollarSign },
 ]
 
 export default function Sidebar() {
   const navigate = useNavigate()
 
-  function handleLogout() {
-    logout()
-    navigate('/login')
-  }
-
   return (
     <aside
-      style={{ backgroundColor: '#0a0908', borderRight: '1px solid #1e1d1a' }}
-      className="flex flex-col w-56 min-h-screen flex-shrink-0"
+      style={{ backgroundColor: '#0E0E0E', borderRight: '1px solid #1C1C1C', width: 220 }}
+      className="flex flex-col flex-shrink-0 min-h-screen"
     >
       {/* Logo */}
-      <div style={{ borderBottom: '1px solid #1e1d1a' }} className="px-5 py-6">
-        <div
-          style={{ fontFamily: "'Bebas Neue', sans-serif", color: '#e5420d' }}
-          className="text-2xl tracking-widest"
-        >
+      <div style={{ borderBottom: '1px solid #1C1C1C' }} className="px-5 py-6">
+        <div style={{ fontFamily: "'Archivo Black', sans-serif", color: '#D91C1C', letterSpacing: '0.08em' }}
+          className="text-xl uppercase">
           AYAMTENNS
         </div>
-        <div style={{ color: '#8a867d' }} className="text-xs mt-0.5 tracking-wider uppercase">
-          BSD Restaurant
+        <div style={{ color: '#4A4A4A' }} className="text-xs mt-0.5 tracking-widest uppercase">
+          Management
         </div>
       </div>
 
@@ -55,33 +43,32 @@ export default function Sidebar() {
             style={({ isActive }) => ({
               display: 'flex',
               alignItems: 'center',
-              gap: '10px',
-              padding: '9px 12px',
-              borderRadius: '6px',
-              fontSize: '13px',
+              gap: 10,
+              padding: '8px 12px',
+              borderRadius: 6,
+              fontSize: 13,
               fontWeight: 500,
-              letterSpacing: '0.02em',
               textDecoration: 'none',
               transition: 'all 0.15s',
-              backgroundColor: isActive ? '#1a1917' : 'transparent',
-              color: isActive ? '#e5420d' : '#8a867d',
-              borderLeft: isActive ? '2px solid #e5420d' : '2px solid transparent',
+              backgroundColor: isActive ? '#1C1C1C' : 'transparent',
+              color: isActive ? '#FFFFFF' : '#5A5A5A',
+              borderLeft: isActive ? '2px solid #D91C1C' : '2px solid transparent',
             })}
           >
-            <Icon size={16} />
+            <Icon size={15} />
             {label}
           </NavLink>
         ))}
       </nav>
 
       {/* Logout */}
-      <div style={{ borderTop: '1px solid #1e1d1a' }} className="px-3 py-4">
+      <div style={{ borderTop: '1px solid #1C1C1C' }} className="px-3 py-4">
         <button
-          onClick={handleLogout}
-          style={{ color: '#8a867d' }}
-          className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded text-sm hover:text-red-400 hover:bg-red-950/20 transition-all"
+          onClick={() => { logout(); navigate('/login') }}
+          style={{ color: '#4A4A4A' }}
+          className="flex items-center gap-2.5 w-full px-3 py-2 rounded text-sm hover:text-white hover:bg-white/5 transition-all"
         >
-          <LogOut size={15} />
+          <LogOut size={14} />
           Logout
         </button>
       </div>
