@@ -66,15 +66,15 @@ create table if not exists expenses (
   created_at  timestamptz not null default now()
 );
 
--- ── RLS (Row Level Security) — disable for internal app ──────────────────────
--- For a private internal tool, we can use anon key with RLS disabled.
--- Uncomment below if you want to keep tables open to anon key:
-alter table items disable row level security;
-alter table menus disable row level security;
+-- ── RLS — DISABLE for internal tool (anon key, no auth) ─────────────────────
+-- IMPORTANT: run these every time after creating/altering tables.
+-- If you see "row-level security" errors, re-run supabase/fix-rls.sql
+alter table items        disable row level security;
+alter table menus        disable row level security;
 alter table menu_recipes disable row level security;
 alter table transactions disable row level security;
-alter table sales disable row level security;
-alter table expenses disable row level security;
+alter table sales        disable row level security;
+alter table expenses     disable row level security;
 
 -- ── Sample Data (optional, delete if not needed) ─────────────────────────────
 -- insert into items (name, category, unit, price_per_unit, stock, min_stock) values
