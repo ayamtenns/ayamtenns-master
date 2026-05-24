@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Expense } from '../lib/types'
 import PageHeader from '../components/PageHeader'
-import { Plus, X } from 'lucide-react'
+import { Plus, X, AlertCircle } from 'lucide-react'
 
 function fmt(n: number) {
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n)
@@ -75,23 +75,34 @@ function ExpenseModal({ onClose, onSave }: { onClose: () => void; onSave: () => 
   )
 }
 
+
 export default function Financial() {
   const [expenses, setExpenses]   = useState<Expense[]>([])
   const [sales, setSales]         = useState<{ total_price: number; date: string }[]>([])
   const [loading, setLoading]     = useState(true)
+  const [error, setError]         = useState<string | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [selectedMonth, setMonth] = useState(new Date().toISOString().slice(5, 7))
   const [selectedYear]            = useState(new Date().getFullYear())
 
   const loadData = useCallback(async () => {
     setLoading(true)
-    const prefix = `${selectedYear}-${selectedMonth}`
-    const [{ data: expData }, { data: salesData }] = await Promise.all([
-      supabase.from('expenses').select('*').gte('date', `${prefix}-01`).lte('date', `${prefix}-31`).order('date', { ascending: false }),
-      supabase.from('sales').select('total_price, date').gte('date', `${prefix}-01`).lte('date', `${prefix}-31`),
-    ])
-    setExpenses(expData ?? []); setSales(salesData ?? [])
-    setLoading(false)
+    setError(null)
+    try {
+      const prefix = `${selectedYear}-${selectedMonth}`
+      const [{ data: expData, error: e1 }, { data: salesData, error: e2 }] = await Promise.all([
+        supabase.from('expenses').select('*').gte('date', `${prefix}-01`).lte('date', `${prefix}-31`).order('date', { ascending: false }),
+        supabase.from('sales').select('total_price, date').gte('date', `${prefix}-01`).lte('date', `${prefix}-31`),
+      ])
+      if (e1) throw e1
+      if (e2) throw e2
+      setExpenses(expData ?? [])
+      setSales(salesData ?? [])
+    } catch (e: any) {
+      setError(e.message ?? 'Gagal memuat data.')
+    } finally {
+      setLoading(false)
+    }
   }, [selectedMonth, selectedYear])
 
   useEffect(() => { loadData() }, [loadData])
@@ -100,12 +111,11 @@ export default function Financial() {
   const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0)
   const profit        = totalRevenue - totalExpenses
   const margin        = totalRevenue > 0 ? (profit / totalRevenue) * 100 : 0
+  const monthLabel    = MONTHS.find(m => m.value === selectedMonth)?.label
 
   const byCategory = EXPENSE_CATEGORIES.map(cat => ({
     cat, total: expenses.filter(e => e.category === cat).reduce((s, e) => s + e.amount, 0)
   })).filter(c => c.total > 0)
-
-  const monthLabel = MONTHS.find(m => m.value === selectedMonth)?.label
 
   return (
     <div className="min-h-screen">
@@ -137,10 +147,25 @@ export default function Financial() {
 
       {loading ? (
         <div style={{ color: '#6B6B6B' }} className="flex items-center justify-center py-32 text-sm">Memuat data...</div>
+      ) : error ? (
+        <div className="px-8 py-5">
+          <div style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12 }}
+            className="flex items-center gap-3 px-5 py-4">
+            <AlertCircle size={16} style={{ color: '#DC2626', flexShrink: 0 }} />
+            <div>
+              <p style={{ color: '#DC2626' }} className="text-sm font-medium">Gagal memuat data</p>
+              <p style={{ color: '#EF4444' }} className="text-xs mt-0.5">{error}</p>
+            </div>
+            <button onClick={loadData} style={{ backgroundColor: '#DC2626', color: '#FFFFFF' }}
+              className="ml-auto px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-[#B91C1C] transition-colors">
+              Coba Lagi
+            </button>
+          </div>
+        </div>
       ) : (
         <div className="px-8 py-6 space-y-5">
           {/* P&L card */}
-          <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E8E8E6', borderRadius: 16, overflow: 'hidden' }}>
+          <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E8E8E6', borderRadius: 16, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
             <div style={{ borderBottom: '1px solid #E8E8E6', backgroundColor: '#F8F8F6' }} className="px-6 py-4 flex items-center justify-between">
               <h3 style={{ fontFamily: "'Archivo Black', sans-serif", color: '#0E0E0E', fontSize: 15, letterSpacing: '0.02em' }}>
                 P&L STATEMENT — {monthLabel?.toUpperCase()} {selectedYear}
@@ -154,26 +179,35 @@ export default function Financial() {
               </span>
             </div>
             <div className="p-6 space-y-2">
-              <div className="flex justify-between items-center py-2.5" style={{ borderBottom: '1px solid #F0F0EE' }}>
-                <span style={{ color: '#0E0E0E' }} className="text-sm font-medium">Revenue (Penjualan)</span>
-                <span style={{ color: '#16A34A', fontFamily: "'Archivo Black', sans-serif" }} className="text-base">{fmt(totalRevenue)}</span>
-              </div>
-              {byCategory.map(c => (
-                <div key={c.cat} className="flex justify-between items-center py-1.5 pl-5">
-                  <span style={{ color: '#6B6B6B' }} className="text-xs">{c.cat}</span>
-                  <span style={{ color: '#DC2626' }} className="text-xs font-medium">({fmt(c.total)})</span>
+              {totalRevenue === 0 && totalExpenses === 0 ? (
+                <div className="py-8 text-center">
+                  <p style={{ color: '#6B6B6B' }} className="text-sm">Belum ada data untuk bulan ini.</p>
+                  <p style={{ color: '#ABABAB' }} className="text-xs mt-1">Catat penjualan atau pengeluaran terlebih dahulu.</p>
                 </div>
-              ))}
-              <div className="flex justify-between items-center py-2.5" style={{ borderBottom: '1px solid #F0F0EE' }}>
-                <span style={{ color: '#0E0E0E' }} className="text-sm font-medium">Total Pengeluaran</span>
-                <span style={{ color: '#DC2626', fontFamily: "'Archivo Black', sans-serif" }} className="text-base">({fmt(totalExpenses)})</span>
-              </div>
-              <div className="flex justify-between items-center pt-3">
-                <span style={{ color: '#0E0E0E', fontFamily: "'Archivo Black', sans-serif" }} className="text-base">NET PROFIT</span>
-                <span style={{ color: profit >= 0 ? '#16A34A' : '#DC2626', fontFamily: "'Archivo Black', sans-serif" }} className="text-2xl">
-                  {fmt(profit)}
-                </span>
-              </div>
+              ) : (
+                <>
+                  <div className="flex justify-between items-center py-2.5" style={{ borderBottom: '1px solid #F0F0EE' }}>
+                    <span style={{ color: '#0E0E0E' }} className="text-sm font-medium">Revenue (Penjualan)</span>
+                    <span style={{ color: '#16A34A', fontFamily: "'Archivo Black', sans-serif" }} className="text-base">{fmt(totalRevenue)}</span>
+                  </div>
+                  {byCategory.map(c => (
+                    <div key={c.cat} className="flex justify-between items-center py-1.5 pl-5">
+                      <span style={{ color: '#6B6B6B' }} className="text-xs">{c.cat}</span>
+                      <span style={{ color: '#DC2626' }} className="text-xs font-medium">({fmt(c.total)})</span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between items-center py-2.5" style={{ borderBottom: '1px solid #F0F0EE' }}>
+                    <span style={{ color: '#0E0E0E' }} className="text-sm font-medium">Total Pengeluaran</span>
+                    <span style={{ color: '#DC2626', fontFamily: "'Archivo Black', sans-serif" }} className="text-base">({fmt(totalExpenses)})</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-3">
+                    <span style={{ color: '#0E0E0E', fontFamily: "'Archivo Black', sans-serif" }} className="text-base">NET PROFIT</span>
+                    <span style={{ color: profit >= 0 ? '#16A34A' : '#DC2626', fontFamily: "'Archivo Black', sans-serif" }} className="text-2xl">
+                      {fmt(profit)}
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -182,35 +216,42 @@ export default function Financial() {
             <h3 style={{ fontFamily: "'Archivo Black', sans-serif", color: '#0E0E0E', fontSize: 14 }} className="mb-3 uppercase tracking-wide">
               Detail Pengeluaran
             </h3>
-            <div style={{ border: '1px solid #E8E8E6', borderRadius: 16, overflow: 'hidden' }}>
-              <table className="w-full">
-                <thead>
-                  <tr style={{ backgroundColor: '#F8F8F6', borderBottom: '1px solid #E8E8E6' }}>
-                    {['Tanggal', 'Kategori', 'Deskripsi', 'Jumlah'].map(h => (
-                      <th key={h} style={{ color: '#6B6B6B' }}
-                        className={`px-4 py-3 text-xs font-medium uppercase tracking-wider ${h === 'Jumlah' ? 'text-right' : 'text-left'}`}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody style={{ backgroundColor: '#FFFFFF' }}>
-                  {expenses.map(e => (
-                    <tr key={e.id} style={{ borderBottom: '1px solid #F0F0EE' }} className="hover:bg-[#FAFAFA] transition-colors">
-                      <td className="px-4 py-3" style={{ color: '#6B6B6B' }}><span className="text-sm">{e.date}</span></td>
-                      <td className="px-4 py-3">
-                        <span style={{ backgroundColor: '#F2F2F0', color: '#6B6B6B', border: '1px solid #E8E8E6' }} className="text-xs px-2.5 py-1 rounded-full font-medium">
-                          {e.category}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3" style={{ color: '#0E0E0E' }}><span className="text-sm">{e.description || '—'}</span></td>
-                      <td className="px-4 py-3 text-right" style={{ color: '#DC2626' }}><span className="text-sm font-semibold">{fmt(e.amount)}</span></td>
+            {expenses.length === 0 ? (
+              <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E8E8E6', borderRadius: 12 }}
+                className="flex flex-col items-center justify-center py-12 gap-2">
+                <p style={{ color: '#6B6B6B' }} className="text-sm">Belum ada pengeluaran bulan {monthLabel}.</p>
+                <button onClick={() => setShowModal(true)} style={{ color: '#D91C1C' }} className="text-xs font-medium hover:underline">
+                  + Tambah pengeluaran
+                </button>
+              </div>
+            ) : (
+              <div style={{ border: '1px solid #E8E8E6', borderRadius: 16, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+                <table className="w-full">
+                  <thead>
+                    <tr style={{ backgroundColor: '#F8F8F6', borderBottom: '1px solid #E8E8E6' }}>
+                      {['Tanggal', 'Kategori', 'Deskripsi', 'Jumlah'].map(h => (
+                        <th key={h} style={{ color: '#6B6B6B' }}
+                          className={`px-4 py-3 text-xs font-medium uppercase tracking-wider ${h === 'Jumlah' ? 'text-right' : 'text-left'}`}>{h}</th>
+                      ))}
                     </tr>
-                  ))}
-                  {expenses.length === 0 && (
-                    <tr><td colSpan={4} className="px-4 py-12 text-center" style={{ color: '#ABABAB' }}>Belum ada pengeluaran bulan ini.</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody style={{ backgroundColor: '#FFFFFF' }}>
+                    {expenses.map(e => (
+                      <tr key={e.id} style={{ borderBottom: '1px solid #F0F0EE' }} className="hover:bg-[#FAFAF9] transition-colors">
+                        <td className="px-4 py-3" style={{ color: '#6B6B6B' }}><span className="text-sm">{e.date}</span></td>
+                        <td className="px-4 py-3">
+                          <span style={{ backgroundColor: '#F2F2F0', color: '#6B6B6B', border: '1px solid #E8E8E6' }} className="text-xs px-2.5 py-1 rounded-full font-medium">
+                            {e.category}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3" style={{ color: '#0E0E0E' }}><span className="text-sm">{e.description || '—'}</span></td>
+                        <td className="px-4 py-3 text-right" style={{ color: '#DC2626' }}><span className="text-sm font-semibold">{fmt(e.amount)}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}

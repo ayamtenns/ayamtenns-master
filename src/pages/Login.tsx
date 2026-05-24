@@ -21,7 +21,7 @@ export default function Login() {
   }
 
   return (
-    <div style={{ backgroundColor: '#F2F2F0' }} className="min-h-screen flex items-center justify-center">
+    <div style={{ backgroundColor: '#f5f4f1' }} className="min-h-screen flex items-center justify-center">
       <div className="w-full max-w-sm px-4">
         {/* Logo */}
         <div className="text-center mb-10">

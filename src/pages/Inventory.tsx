@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Item, Transaction } from '../lib/types'
 import PageHeader from '../components/PageHeader'
-import { Plus, AlertTriangle, ArrowUp, ArrowDown, X, Edit2 } from 'lucide-react'
+import { Plus, AlertTriangle, ArrowUp, ArrowDown, X, Edit2, AlertCircle, Database } from 'lucide-react'
+import { seedDatabase } from '../lib/seedData'
 
 const ITEM_CATEGORIES = ['Ayam', 'Bumbu', 'Sayuran', 'Minuman', 'Kemasan', 'Lainnya']
 const UNITS           = ['kg', 'gr', 'liter', 'ml', 'pcs', 'dus', 'pack']
@@ -160,11 +161,29 @@ function TxModal({ item, type, onClose, onSave }: { item: Item; type: 'in' | 'ou
   )
 }
 
+// ── Stat card with accent left border ─────────────────────────────────────────
+function StatCard({ label, value, color }: { label: string; value: string | number; color: string }) {
+  return (
+    <div style={{
+      backgroundColor: '#FFFFFF',
+      border: '1px solid #E8E8E6',
+      borderLeft: `3px solid ${color}`,
+      borderRadius: 12,
+      boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
+    }} className="p-4">
+      <div style={{ color: '#6B6B6B' }} className="text-xs uppercase tracking-wider mb-1 font-medium">{label}</div>
+      <div style={{ color, fontFamily: "'Archivo Black', sans-serif" }} className="text-2xl">{value}</div>
+    </div>
+  )
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function Inventory() {
   const [items, setItems]           = useState<Item[]>([])
   const [transactions, setTx]       = useState<Transaction[]>([])
   const [loading, setLoading]       = useState(true)
+  const [error, setError]           = useState<string | null>(null)
+  const [seeding, setSeeding]       = useState(false)
   const [itemModal, setItemModal]   = useState<'add' | Item | null>(null)
   const [txModal, setTxModal]       = useState<{ item: Item; type: 'in' | 'out' } | null>(null)
   const [activeTab, setActiveTab]   = useState<'items' | 'history'>('items')
@@ -172,12 +191,21 @@ export default function Inventory() {
 
   const loadData = useCallback(async () => {
     setLoading(true)
-    const [{ data: itemsData }, { data: txData }] = await Promise.all([
-      supabase.from('items').select('*').order('name'),
-      supabase.from('transactions').select('*, item:items(name,unit)').order('created_at', { ascending: false }).limit(100),
-    ])
-    setItems(itemsData ?? []); setTx((txData ?? []) as Transaction[])
-    setLoading(false)
+    setError(null)
+    try {
+      const [{ data: itemsData, error: e1 }, { data: txData, error: e2 }] = await Promise.all([
+        supabase.from('items').select('*').order('name'),
+        supabase.from('transactions').select('*, item:items(name,unit)').order('created_at', { ascending: false }).limit(100),
+      ])
+      if (e1) throw e1
+      if (e2) throw e2
+      setItems(itemsData ?? [])
+      setTx((txData ?? []) as Transaction[])
+    } catch (e: any) {
+      setError(e.message ?? 'Gagal memuat data.')
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => { loadData() }, [loadData])
@@ -186,6 +214,15 @@ export default function Inventory() {
     if (!confirm('Hapus barang ini?')) return
     await supabase.from('items').delete().eq('id', id)
     loadData()
+  }
+
+  async function handleSeed() {
+    if (!confirm('Tambahkan 32 item bahan baku Ayamtenns sebagai data awal?')) return
+    setSeeding(true)
+    const result = await seedDatabase()
+    setSeeding(false)
+    if (result.success) { loadData() }
+    else { alert('Seed gagal: ' + result.message) }
   }
 
   const lowStock = items.filter(i => i.stock <= i.min_stock && i.min_stock > 0)
@@ -198,10 +235,12 @@ export default function Inventory() {
         title="Inventory"
         subtitle="Kelola stok bahan baku dan monitor pergerakan barang"
         action={
-          <button onClick={() => setItemModal('add')} style={{ backgroundColor: '#D91C1C' }}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold hover:bg-[#B51515] transition-colors">
-            <Plus size={14} /> Tambah Barang
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => setItemModal('add')} style={{ backgroundColor: '#D91C1C' }}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold hover:bg-[#B51515] transition-colors">
+              <Plus size={14} /> Tambah Barang
+            </button>
+          </div>
         }
       />
 
@@ -216,17 +255,10 @@ export default function Inventory() {
 
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4 px-8 py-5" style={{ borderBottom: '1px solid #E8E8E6' }}>
-        {[
-          { label: 'Total Item',         value: items.length,                                      color: '#0E0E0E' },
-          { label: 'Nilai Stok',         value: fmt(items.reduce((s, i) => s + i.stock * i.price_per_unit, 0)), color: '#D97706' },
-          { label: 'Stok Kritis',        value: lowStock.length,                                   color: lowStock.length > 0 ? '#DC2626' : '#16A34A' },
-          { label: 'Transaksi Hari Ini', value: transactions.filter(t => t.date === today).length, color: '#0E0E0E' },
-        ].map(s => (
-          <div key={s.label} style={{ backgroundColor: '#FFFFFF', border: '1px solid #E8E8E6' }} className="rounded-2xl p-4">
-            <div style={{ color: '#6B6B6B' }} className="text-xs uppercase tracking-wider mb-1 font-medium">{s.label}</div>
-            <div style={{ color: s.color, fontFamily: "'Archivo Black', sans-serif" }} className="text-2xl">{s.value}</div>
-          </div>
-        ))}
+        <StatCard label="Total Item"         value={items.length}                                                        color="#0E0E0E" />
+        <StatCard label="Nilai Stok"         value={fmt(items.reduce((s, i) => s + i.stock * i.price_per_unit, 0))}      color="#D97706" />
+        <StatCard label="Stok Kritis"        value={lowStock.length}                                                      color={lowStock.length > 0 ? '#DC2626' : '#16A34A'} />
+        <StatCard label="Transaksi Hari Ini" value={transactions.filter(t => t.date === today).length}                   color="#D91C1C" />
       </div>
 
       {/* Tabs */}
@@ -253,8 +285,46 @@ export default function Inventory() {
             </div>
             {loading ? (
               <div style={{ color: '#6B6B6B' }} className="py-20 text-center text-sm">Memuat data...</div>
+            ) : error ? (
+              <div style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12 }}
+                className="flex items-center gap-3 px-5 py-4">
+                <AlertCircle size={16} style={{ color: '#DC2626', flexShrink: 0 }} />
+                <div>
+                  <p style={{ color: '#DC2626' }} className="text-sm font-medium">Gagal memuat data</p>
+                  <p style={{ color: '#EF4444' }} className="text-xs mt-0.5">{error}</p>
+                </div>
+                <button onClick={loadData} style={{ backgroundColor: '#DC2626', color: '#FFFFFF' }}
+                  className="ml-auto px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-[#B91C1C] transition-colors">
+                  Coba Lagi
+                </button>
+              </div>
+            ) : items.length === 0 ? (
+              <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E8E8E6', borderRadius: 16 }}
+                className="flex flex-col items-center justify-center py-16 gap-4">
+                <div style={{ backgroundColor: '#F8F8F6', borderRadius: '50%', width: 64, height: 64 }}
+                  className="flex items-center justify-center">
+                  <Database size={28} style={{ color: '#ABABAB' }} />
+                </div>
+                <div className="text-center">
+                  <p style={{ color: '#0E0E0E' }} className="text-sm font-semibold">Inventory masih kosong</p>
+                  <p style={{ color: '#6B6B6B' }} className="text-xs mt-1">Tambah barang manual atau load data awal Ayamtenns</p>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => setItemModal('add')}
+                    style={{ border: '1px solid #E8E8E6', color: '#0E0E0E' }}
+                    className="px-4 py-2 rounded-xl text-sm font-medium hover:bg-[#F8F8F6] transition-colors">
+                    + Tambah Manual
+                  </button>
+                  <button onClick={handleSeed} disabled={seeding}
+                    style={{ backgroundColor: '#D91C1C' }}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold hover:bg-[#B51515] transition-colors disabled:opacity-60">
+                    <Database size={14} />
+                    {seeding ? 'Loading...' : 'Load Data Awal Ayamtenns'}
+                  </button>
+                </div>
+              </div>
             ) : (
-              <div style={{ border: '1px solid #E8E8E6', borderRadius: 16, overflow: 'hidden' }}>
+              <div style={{ border: '1px solid #E8E8E6', borderRadius: 16, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
                 <table className="w-full">
                   <thead>
                     <tr style={{ backgroundColor: '#F8F8F6', borderBottom: '1px solid #E8E8E6' }}>
@@ -270,7 +340,7 @@ export default function Inventory() {
                     {filtered.map(item => {
                       const isLow = item.stock <= item.min_stock && item.min_stock > 0
                       return (
-                        <tr key={item.id} style={{ borderBottom: '1px solid #F0F0EE' }} className="hover:bg-[#FAFAFA] transition-colors">
+                        <tr key={item.id} style={{ borderBottom: '1px solid #F0F0EE' }} className="hover:bg-[#FAFAF9] transition-colors">
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-1.5">
                               {isLow && <AlertTriangle size={12} style={{ color: '#DC2626' }} />}
@@ -308,8 +378,8 @@ export default function Inventory() {
                         </tr>
                       )
                     })}
-                    {filtered.length === 0 && (
-                      <tr><td colSpan={8} className="px-4 py-12 text-center" style={{ color: '#ABABAB' }}>Belum ada barang.</td></tr>
+                    {filtered.length === 0 && items.length > 0 && (
+                      <tr><td colSpan={8} className="px-4 py-12 text-center" style={{ color: '#ABABAB' }}>Tidak ada barang yang cocok.</td></tr>
                     )}
                   </tbody>
                 </table>
