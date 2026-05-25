@@ -23,6 +23,8 @@ function ItemModal({ item, onClose, onSave }: { item: Partial<Item>; onClose: ()
   const [price, setPrice]       = useState(String(item?.price_per_unit ?? ''))
   const [stock, setStock]       = useState(String(item?.stock ?? '0'))
   const [minStock, setMinStock] = useState(String(item?.min_stock ?? ''))
+  const [parQty, setParQty]     = useState(String(item?.par_order_qty ?? ''))
+  const [notes, setNotes]       = useState(item?.notes ?? '')
   const [saving, setSaving]     = useState(false)
   const [error, setError]       = useState('')
 
@@ -30,7 +32,7 @@ function ItemModal({ item, onClose, onSave }: { item: Partial<Item>; onClose: ()
     if (!name.trim() || !price) { setError('Nama dan harga wajib diisi.'); return }
     setSaving(true)
     try {
-      const data = { name: name.trim(), category, unit, price_per_unit: parseFloat(price), stock: parseFloat(stock) || 0, min_stock: parseFloat(minStock) || 0 }
+      const data = { name: name.trim(), category, unit, price_per_unit: parseFloat(price), stock: parseFloat(stock) || 0, min_stock: parseFloat(minStock) || 0, par_order_qty: parseFloat(parQty) || 0, notes: notes.trim() }
       if (isEdit && item?.id) {
         const { error: e } = await supabase.from('items').update(data).eq('id', item.id)
         if (e) throw e
@@ -88,6 +90,24 @@ function ItemModal({ item, onClose, onSave }: { item: Partial<Item>; onClose: ()
               <input type="number" value={minStock} onChange={e => setMinStock(e.target.value)} min="0" style={inputStyle}
                 className="w-full px-3 py-2.5 rounded-xl text-sm outline-none focus:border-[#D91C1C] transition-colors" />
             </div>
+            <div>
+              <label style={{ color: '#6B6B6B' }} className="block text-xs mb-1.5 uppercase tracking-wider font-medium">Par Order (biasanya minta)</label>
+              <input type="number" value={parQty} onChange={e => setParQty(e.target.value)} min="0" step="0.5" style={inputStyle}
+                placeholder="0"
+                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none focus:border-[#D91C1C] transition-colors" />
+            </div>
+          </div>
+          <div>
+            <label style={{ color: '#6B6B6B' }} className="block text-xs mb-1.5 uppercase tracking-wider font-medium">
+              Catatan SOP
+              <span style={{ color: '#ABABAB', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }} className="ml-1 normal-case">
+                — penyimpanan, handling, supplier, dll.
+              </span>
+            </label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3}
+              placeholder="contoh: simpan di freezer, thaw max 24 jam sebelum pakai. Supplier: Pak Budi 0812-xxx"
+              style={{ ...inputStyle, resize: 'none' }}
+              className="w-full px-3 py-2.5 rounded-xl text-sm outline-none focus:border-[#D91C1C] transition-colors" />
           </div>
           {error && <p style={{ color: '#DC2626' }} className="text-xs">{error}</p>}
           <div className="flex gap-3 pt-1">
@@ -448,7 +468,7 @@ export default function Inventory() {
                           onChange={toggleSelectAll}
                           className="cursor-pointer accent-[#D91C1C]" />
                       </th>
-                      {['Nama', 'Kategori', 'Satuan', 'Harga/Unit', 'Stok', 'Min', 'Nilai Stok', ''].map(h => (
+                      {['Nama', 'Kategori', 'Satuan', 'Harga/Unit', 'Stok', 'Min / Par', 'Nilai Stok', ''].map(h => (
                         <th key={h} style={{ color: '#6B6B6B' }}
                           className={`px-4 py-3 text-xs font-medium uppercase tracking-wider ${['Harga/Unit', 'Stok', 'Nilai Stok'].includes(h) ? 'text-right' : 'text-left'}`}>
                           {h}
@@ -470,7 +490,14 @@ export default function Inventory() {
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-1.5">
                               {isLow && <AlertTriangle size={12} style={{ color: '#DC2626' }} />}
-                              <span style={{ color: '#0E0E0E' }} className="text-sm font-medium">{item.name}</span>
+                              <div>
+                                <span style={{ color: '#0E0E0E' }} className="text-sm font-medium">{item.name}</span>
+                                {item.notes && (
+                                  <div style={{ color: '#ABABAB', fontSize: 11, marginTop: 2, maxWidth: 260 }} className="truncate" title={item.notes}>
+                                    📝 {item.notes}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           </td>
                           <td className="px-4 py-3">
@@ -485,7 +512,12 @@ export default function Inventory() {
                               {item.stock} {item.unit}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-right" style={{ color: '#ABABAB' }}><span className="text-sm">{item.min_stock}</span></td>
+                          <td className="px-4 py-3 text-right">
+                            <span className="text-sm" style={{ color: '#ABABAB' }}>{item.min_stock}</span>
+                            {item.par_order_qty > 0 && (
+                              <span style={{ color: '#2563EB', fontSize: 11, marginLeft: 4 }}>/ {item.par_order_qty}</span>
+                            )}
+                          </td>
                           <td className="px-4 py-3 text-right" style={{ color: '#0E0E0E' }}><span className="text-sm">{fmt(item.stock * item.price_per_unit)}</span></td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-1 justify-end">

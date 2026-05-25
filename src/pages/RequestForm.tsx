@@ -143,7 +143,19 @@ export default function RequestForm() {
                   }}>
                     <div style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
                       <div style={{ color: ink, fontSize: 14, fontWeight: 500 }}>{item.name}</div>
-                      <div style={{ color: muted, fontSize: 12, marginTop: 2 }}>{item.unit}</div>
+                      <div style={{ color: muted, fontSize: 12, marginTop: 1 }}>
+                        {item.unit}
+                        {item.par_order_qty > 0 && (
+                          <span style={{ color: '#2563EB', marginLeft: 6, fontWeight: 600 }}>
+                            · biasanya {item.par_order_qty} {item.unit}
+                          </span>
+                        )}
+                      </div>
+                      {item.notes && (
+                        <div style={{ color: '#ABABAB', fontSize: 11, marginTop: 3, lineHeight: 1.4 }}>
+                          {item.notes}
+                        </div>
+                      )}
                     </div>
                     {/* Qty input with +/- */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>

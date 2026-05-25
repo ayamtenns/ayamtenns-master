@@ -6,6 +6,8 @@ export interface Item {
   price_per_unit: number
   stock: number
   min_stock: number
+  notes: string
+  par_order_qty: number
   created_at: string
 }
 
