@@ -8,6 +8,8 @@ import Inventory from './pages/Inventory'
 import Purchasing from './pages/Purchasing'
 import Sales from './pages/Sales'
 import Financial from './pages/Financial'
+import Transfers from './pages/Transfers'
+import RequestForm from './pages/RequestForm'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   if (!isAuthenticated()) return <Navigate to="/login" replace />
@@ -26,7 +28,10 @@ export default function App() {
           <Route path="/purchasing" element={<Purchasing />} />
           <Route path="/sales" element={<Sales />} />
           <Route path="/financial" element={<Financial />} />
+          <Route path="/transfers" element={<Transfers />} />
         </Route>
+        {/* Public — no auth required */}
+        <Route path="/request" element={<RequestForm />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

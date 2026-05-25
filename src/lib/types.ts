@@ -51,6 +51,27 @@ export interface Sale {
   menu?: Menu
 }
 
+export interface TransferRequest {
+  id: string
+  request_date: string
+  requested_by: string
+  status: 'pending' | 'approved' | 'sent' | 'received'
+  notes: string
+  approved_at: string | null
+  created_at: string
+  items?: TransferRequestItem[]
+}
+
+export interface TransferRequestItem {
+  id: string
+  request_id: string
+  item_id: string
+  quantity_requested: number
+  quantity_sent: number | null
+  created_at: string
+  item?: Pick<Item, 'name' | 'unit' | 'category'>
+}
+
 export interface Expense {
   id: string
   date: string
