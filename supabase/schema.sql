@@ -66,15 +66,39 @@ create table if not exists expenses (
   created_at  timestamptz not null default now()
 );
 
+-- ── Transfer Requests (BSD → Gading) ────────────────────────────────────────
+-- staff BSD submit permintaan barang; owner approve di dashboard
+create table if not exists transfer_requests (
+  id             uuid primary key default uuid_generate_v4(),
+  request_date   date        not null default current_date,
+  requested_by   text        not null default '',
+  status         text        not null default 'pending'
+                   check (status in ('pending', 'approved', 'sent', 'received')),
+  notes          text        not null default '',
+  approved_at    timestamptz,
+  created_at     timestamptz not null default now()
+);
+
+create table if not exists transfer_request_items (
+  id                 uuid primary key default uuid_generate_v4(),
+  request_id         uuid        not null references transfer_requests(id) on delete cascade,
+  item_id            uuid        not null references items(id) on delete restrict,
+  quantity_requested numeric(12, 3) not null,
+  quantity_sent      numeric(12, 3),
+  created_at         timestamptz not null default now()
+);
+
 -- ── RLS — DISABLE for internal tool (anon key, no auth) ─────────────────────
 -- IMPORTANT: run these every time after creating/altering tables.
 -- If you see "row-level security" errors, re-run supabase/fix-rls.sql
-alter table items        disable row level security;
-alter table menus        disable row level security;
-alter table menu_recipes disable row level security;
-alter table transactions disable row level security;
-alter table sales        disable row level security;
-alter table expenses     disable row level security;
+alter table items                   disable row level security;
+alter table menus                   disable row level security;
+alter table menu_recipes            disable row level security;
+alter table transactions            disable row level security;
+alter table sales                   disable row level security;
+alter table expenses                disable row level security;
+alter table transfer_requests       disable row level security;
+alter table transfer_request_items  disable row level security;
 
 -- ── Sample Data (optional, delete if not needed) ─────────────────────────────
 -- insert into items (name, category, unit, price_per_unit, stock, min_stock) values
