@@ -190,6 +190,8 @@ export default function Inventory() {
   const [activeTab, setActiveTab]   = useState<'items' | 'history'>('items')
   const [search, setSearch]         = useState('')
   const [selected, setSelected]     = useState<Set<string>>(new Set())
+  const [filterCat, setFilterCat]   = useState('Semua')
+  const [filterStock, setFilterStock] = useState<'Semua' | 'Kritis' | 'Habis'>('Semua')
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -255,9 +257,17 @@ export default function Inventory() {
     else { alert('Seed gagal: ' + result.message) }
   }
 
-  const lowStock = items.filter(i => i.stock <= i.min_stock && i.min_stock > 0)
-  const filtered = items.filter(i => i.name.toLowerCase().includes(search.toLowerCase()))
-  const today    = new Date().toISOString().split('T')[0]
+  const lowStock   = items.filter(i => i.stock <= i.min_stock && i.min_stock > 0)
+  const categories = ['Semua', ...Array.from(new Set(items.map(i => i.category))).sort()]
+  const filtered   = items
+    .filter(i => filterCat === 'Semua'   || i.category === filterCat)
+    .filter(i => {
+      if (filterStock === 'Kritis') return i.stock <= i.min_stock && i.min_stock > 0
+      if (filterStock === 'Habis')  return i.stock === 0
+      return true
+    })
+    .filter(i => i.name.toLowerCase().includes(search.toLowerCase()))
+  const today      = new Date().toISOString().split('T')[0]
 
   return (
     <div className="min-h-screen">
@@ -309,7 +319,8 @@ export default function Inventory() {
       <div className="px-8 py-5">
         {activeTab === 'items' && (
           <>
-            <div className="mb-4 flex items-center gap-3">
+            {/* Search + bulk action */}
+            <div className="mb-3 flex items-center gap-3">
               <input value={search} onChange={e => { setSearch(e.target.value); setSelected(new Set()) }} placeholder="Cari barang..."
                 style={inputStyle} className="px-3 py-2 rounded-xl text-sm outline-none focus:border-[#D91C1C] transition-colors w-64" />
               {selected.size > 0 && (
@@ -325,6 +336,65 @@ export default function Inventory() {
                   <button onClick={() => setSelected(new Set())} style={{ color: '#ABABAB' }}
                     className="hover:text-[#DC2626] transition-colors"><X size={14} /></button>
                 </div>
+              )}
+            </div>
+
+            {/* Filter bar */}
+            <div className="mb-4 flex items-center gap-4 flex-wrap">
+              {/* Category pills */}
+              <div className="flex gap-1.5 flex-wrap">
+                {categories.map(cat => (
+                  <button key={cat} onClick={() => { setFilterCat(cat); setSelected(new Set()) }}
+                    style={{
+                      backgroundColor: filterCat === cat ? '#0E0E0E' : '#F2F2F0',
+                      color:           filterCat === cat ? '#FFFFFF'  : '#6B6B6B',
+                      border:          '1px solid ' + (filterCat === cat ? '#0E0E0E' : '#E8E8E6'),
+                    }}
+                    className="px-3 py-1 rounded-full text-xs font-medium transition-colors whitespace-nowrap">
+                    {cat}
+                    {cat !== 'Semua' && (
+                      <span style={{ opacity: 0.6 }} className="ml-1">
+                        {items.filter(i => i.category === cat).length}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              {/* Divider */}
+              <div style={{ width: 1, height: 20, backgroundColor: '#E8E8E6' }} />
+
+              {/* Stock status pills */}
+              <div className="flex gap-1.5">
+                {(['Semua', 'Kritis', 'Habis'] as const).map(s => {
+                  const count = s === 'Kritis'
+                    ? items.filter(i => i.stock <= i.min_stock && i.min_stock > 0).length
+                    : s === 'Habis'
+                    ? items.filter(i => i.stock === 0).length
+                    : null
+                  const active = filterStock === s
+                  const accent = s === 'Kritis' ? '#DC2626' : s === 'Habis' ? '#D97706' : '#6B6B6B'
+                  return (
+                    <button key={s} onClick={() => { setFilterStock(s); setSelected(new Set()) }}
+                      style={{
+                        backgroundColor: active ? accent : '#F2F2F0',
+                        color:           active ? '#FFFFFF' : accent,
+                        border:          '1px solid ' + (active ? accent : '#E8E8E6'),
+                      }}
+                      className="px-3 py-1 rounded-full text-xs font-medium transition-colors whitespace-nowrap">
+                      {s === 'Semua' ? 'Semua Stok' : s}
+                      {count !== null && <span style={{ opacity: 0.75 }} className="ml-1">{count}</span>}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Reset filter */}
+              {(filterCat !== 'Semua' || filterStock !== 'Semua') && (
+                <button onClick={() => { setFilterCat('Semua'); setFilterStock('Semua'); setSelected(new Set()) }}
+                  style={{ color: '#ABABAB' }} className="text-xs hover:text-[#D91C1C] transition-colors underline">
+                  Reset filter
+                </button>
               )}
             </div>
             {loading ? (
@@ -435,7 +505,13 @@ export default function Inventory() {
                       )
                     })}
                     {filtered.length === 0 && items.length > 0 && (
-                      <tr><td colSpan={9} className="px-4 py-12 text-center" style={{ color: '#ABABAB' }}>Tidak ada barang yang cocok.</td></tr>
+                      <tr><td colSpan={9} className="px-4 py-12 text-center" style={{ color: '#ABABAB' }}>
+                        Tidak ada barang yang cocok.{' '}
+                        {(filterCat !== 'Semua' || filterStock !== 'Semua') && (
+                          <button onClick={() => { setFilterCat('Semua'); setFilterStock('Semua') }}
+                            style={{ color: '#D91C1C' }} className="underline text-xs">Reset filter</button>
+                        )}
+                      </td></tr>
                     )}
                   </tbody>
                 </table>
