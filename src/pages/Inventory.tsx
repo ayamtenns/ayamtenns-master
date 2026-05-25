@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Item, Transaction } from '../lib/types'
 import PageHeader from '../components/PageHeader'
-import { Plus, AlertTriangle, ArrowUp, ArrowDown, X, Edit2, AlertCircle, Database } from 'lucide-react'
+import { Plus, AlertTriangle, ArrowUp, ArrowDown, X, Edit2, AlertCircle, Database, Trash2 } from 'lucide-react'
 import { seedDatabase } from '../lib/seedData'
 
 const ITEM_CATEGORIES = ['Ayam', 'Bumbu', 'Sayuran', 'Minuman', 'Kemasan', 'Lainnya']
@@ -184,10 +184,12 @@ export default function Inventory() {
   const [loading, setLoading]       = useState(true)
   const [error, setError]           = useState<string | null>(null)
   const [seeding, setSeeding]       = useState(false)
+  const [deleting, setDeleting]     = useState(false)
   const [itemModal, setItemModal]   = useState<'add' | Item | null>(null)
   const [txModal, setTxModal]       = useState<{ item: Item; type: 'in' | 'out' } | null>(null)
   const [activeTab, setActiveTab]   = useState<'items' | 'history'>('items')
   const [search, setSearch]         = useState('')
+  const [selected, setSelected]     = useState<Set<string>>(new Set())
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -213,11 +215,39 @@ export default function Inventory() {
   async function handleDeleteItem(id: string) {
     if (!confirm('Hapus barang ini?')) return
     await supabase.from('items').delete().eq('id', id)
+    setSelected(prev => { const s = new Set(prev); s.delete(id); return s })
     loadData()
   }
 
+  async function handleBulkDelete() {
+    if (selected.size === 0) return
+    if (!confirm(`Hapus ${selected.size} barang yang dipilih? Aksi ini tidak bisa dibatalkan.`)) return
+    setDeleting(true)
+    const ids = [...selected]
+    await supabase.from('items').delete().in('id', ids)
+    setSelected(new Set())
+    setDeleting(false)
+    loadData()
+  }
+
+  function toggleSelect(id: string) {
+    setSelected(prev => {
+      const s = new Set(prev)
+      s.has(id) ? s.delete(id) : s.add(id)
+      return s
+    })
+  }
+
+  function toggleSelectAll() {
+    if (selected.size === filtered.length && filtered.length > 0) {
+      setSelected(new Set())
+    } else {
+      setSelected(new Set(filtered.map(i => i.id)))
+    }
+  }
+
   async function handleSeed() {
-    if (!confirm('Tambahkan 32 item bahan baku Ayamtenns sebagai data awal?')) return
+    if (!confirm('Tambahkan 87 item bahan baku Ayamtenns sebagai data awal?')) return
     setSeeding(true)
     const result = await seedDatabase()
     setSeeding(false)
@@ -279,9 +309,23 @@ export default function Inventory() {
       <div className="px-8 py-5">
         {activeTab === 'items' && (
           <>
-            <div className="mb-4">
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari barang..."
+            <div className="mb-4 flex items-center gap-3">
+              <input value={search} onChange={e => { setSearch(e.target.value); setSelected(new Set()) }} placeholder="Cari barang..."
                 style={inputStyle} className="px-3 py-2 rounded-xl text-sm outline-none focus:border-[#D91C1C] transition-colors w-64" />
+              {selected.size > 0 && (
+                <div style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10 }}
+                  className="flex items-center gap-3 px-4 py-2">
+                  <span style={{ color: '#DC2626' }} className="text-sm font-semibold">{selected.size} dipilih</span>
+                  <button onClick={handleBulkDelete} disabled={deleting}
+                    style={{ backgroundColor: '#DC2626', color: '#FFFFFF' }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-[#B91C1C] transition-colors disabled:opacity-60">
+                    <Trash2 size={12} />
+                    {deleting ? 'Menghapus...' : `Hapus ${selected.size} barang`}
+                  </button>
+                  <button onClick={() => setSelected(new Set())} style={{ color: '#ABABAB' }}
+                    className="hover:text-[#DC2626] transition-colors"><X size={14} /></button>
+                </div>
+              )}
             </div>
             {loading ? (
               <div style={{ color: '#6B6B6B' }} className="py-20 text-center text-sm">Memuat data...</div>
@@ -328,6 +372,12 @@ export default function Inventory() {
                 <table className="w-full">
                   <thead>
                     <tr style={{ backgroundColor: '#F8F8F6', borderBottom: '1px solid #E8E8E6' }}>
+                      <th className="px-4 py-3 w-8">
+                        <input type="checkbox"
+                          checked={filtered.length > 0 && selected.size === filtered.length}
+                          onChange={toggleSelectAll}
+                          className="cursor-pointer accent-[#D91C1C]" />
+                      </th>
                       {['Nama', 'Kategori', 'Satuan', 'Harga/Unit', 'Stok', 'Min', 'Nilai Stok', ''].map(h => (
                         <th key={h} style={{ color: '#6B6B6B' }}
                           className={`px-4 py-3 text-xs font-medium uppercase tracking-wider ${['Harga/Unit', 'Stok', 'Nilai Stok'].includes(h) ? 'text-right' : 'text-left'}`}>
@@ -340,7 +390,13 @@ export default function Inventory() {
                     {filtered.map(item => {
                       const isLow = item.stock <= item.min_stock && item.min_stock > 0
                       return (
-                        <tr key={item.id} style={{ borderBottom: '1px solid #F0F0EE' }} className="hover:bg-[#FAFAF9] transition-colors">
+                        <tr key={item.id}
+                          style={{ borderBottom: '1px solid #F0F0EE', backgroundColor: selected.has(item.id) ? '#FFF8F8' : undefined }}
+                          className="hover:bg-[#FAFAF9] transition-colors">
+                          <td className="px-4 py-3 w-8">
+                            <input type="checkbox" checked={selected.has(item.id)} onChange={() => toggleSelect(item.id)}
+                              className="cursor-pointer accent-[#D91C1C]" />
+                          </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-1.5">
                               {isLow && <AlertTriangle size={12} style={{ color: '#DC2626' }} />}
@@ -379,7 +435,7 @@ export default function Inventory() {
                       )
                     })}
                     {filtered.length === 0 && items.length > 0 && (
-                      <tr><td colSpan={8} className="px-4 py-12 text-center" style={{ color: '#ABABAB' }}>Tidak ada barang yang cocok.</td></tr>
+                      <tr><td colSpan={9} className="px-4 py-12 text-center" style={{ color: '#ABABAB' }}>Tidak ada barang yang cocok.</td></tr>
                     )}
                   </tbody>
                 </table>
