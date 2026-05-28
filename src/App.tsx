@@ -10,6 +10,7 @@ import Sales from './pages/Sales'
 import Financial from './pages/Financial'
 import Transfers from './pages/Transfers'
 import RequestForm from './pages/RequestForm'
+import Gading from './pages/Gading'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   if (!isAuthenticated()) return <Navigate to="/login" replace />
@@ -29,9 +30,11 @@ export default function App() {
           <Route path="/sales" element={<Sales />} />
           <Route path="/financial" element={<Financial />} />
           <Route path="/transfers" element={<Transfers />} />
+          <Route path="/gading" element={<Gading />} />
         </Route>
         {/* Public — no auth required */}
-        <Route path="/request" element={<RequestForm />} />
+        <Route path="/request-bsd" element={<RequestForm />} />
+        <Route path="/request" element={<Navigate to="/request-bsd" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

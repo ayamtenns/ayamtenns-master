@@ -5,10 +5,51 @@ export interface Item {
   unit: string
   price_per_unit: number
   stock: number
+  stock_gading: number
   min_stock: number
   notes: string
   par_order_qty: number
+  gading_source: 'produksi' | 'supplier'
   created_at: string
+}
+
+export interface GadingProduction {
+  id: string
+  date: string
+  type: 'produksi' | 'supplier'
+  notes: string
+  created_at: string
+  items?: GadingProductionItem[]
+}
+
+export interface GadingProductionItem {
+  id: string
+  production_id: string
+  item_id: string
+  quantity: number
+  created_at: string
+  item?: Pick<Item, 'name' | 'unit' | 'category'>
+}
+
+export interface GadingMaterial {
+  id: string
+  name: string
+  category: string
+  unit: string
+  stock: number
+  notes: string
+  created_at: string
+}
+
+export interface GadingMaterialTransaction {
+  id: string
+  material_id: string
+  date: string
+  type: 'in' | 'out'
+  quantity: number
+  notes: string
+  created_at: string
+  material?: Pick<GadingMaterial, 'name' | 'unit'>
 }
 
 export interface Menu {

@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, UtensilsCrossed, Package,
-  ShoppingCart, TrendingUp, DollarSign, LogOut, ArrowLeftRight,
+  ShoppingCart, TrendingUp, DollarSign, LogOut, ArrowLeftRight, Factory,
 } from 'lucide-react'
 import { logout } from '../lib/auth'
 
@@ -13,6 +13,7 @@ const navItems = [
   { to: '/sales',      label: 'Sales',       icon: TrendingUp },
   { to: '/financial',  label: 'Financial',   icon: DollarSign },
   { to: '/transfers',  label: 'Transfers',   icon: ArrowLeftRight },
+  { to: '/gading',    label: 'Gading',      icon: Factory },
 ]
 
 export default function Sidebar() {

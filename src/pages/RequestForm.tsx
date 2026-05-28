@@ -4,6 +4,7 @@
  */
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { notifyWA } from '../lib/notify'
 import type { Item } from '../lib/types'
 
 type QtyMap = Record<string, string> // item_id → qty string
@@ -58,6 +59,15 @@ export default function RequestForm() {
         }))
       )
       if (e2) throw e2
+
+      // Notify supervisor via WA (fire & forget)
+      const itemLines = requested
+        .map(i => `• ${i.name}: ${qtys[i.id]} ${i.unit}`)
+        .join('\n')
+      notifyWA(
+        `📦 *Permintaan Barang Baru*\n\nDari: ${name.trim()}\nTanggal: ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long' })}\n\n${itemLines}${notes.trim() ? `\n\nCatatan: ${notes.trim()}` : ''}\n\n_Cek & approve di sistem AYAMTENNS._`
+      )
+
       setDone(true)
     } catch (err: any) {
       setError(err.message ?? 'Gagal mengirim request.')
@@ -167,6 +177,7 @@ export default function RequestForm() {
                       <input
                         type="number" min="0" step="0.5"
                         value={qtys[item.id] || '0'}
+                        onFocus={e => e.target.select()}
                         onChange={e => setQty(item.id, e.target.value)}
                         style={{ width: 52, textAlign: 'center', padding: '6px 4px', fontSize: 15, fontWeight: 600, color: ink, border: `1px solid ${bdr}`, borderRadius: 8, backgroundColor: '#F8F8F6', outline: 'none' }}
                       />
