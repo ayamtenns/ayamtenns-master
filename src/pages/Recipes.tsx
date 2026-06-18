@@ -569,6 +569,8 @@ export default function Recipes() {
       if (!recipe?.output_item_id) continue
       const boughtKg  = boughtMap[ing.item_id!] || 0
       const produced  = producedMap[recipe.output_item_id] || 0
+      const rawName = (ing.item as any)?.name ?? ''
+      if (!rawName.toLowerCase().includes('ayam')) continue
       if (boughtKg === 0 || produced === 0) continue
       const yieldPerKg = produced / boughtKg
       const newUc      = (ing.quantity as number) * yieldPerKg
