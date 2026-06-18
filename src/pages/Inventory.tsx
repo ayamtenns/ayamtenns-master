@@ -253,6 +253,7 @@ export default function Inventory() {
   const [filterCat, setFilterCat]     = useState('Semua')
   const [filterSource, setFilterSource] = useState<'Semua' | 'supplier' | 'produksi'>('Semua')
   const [filterStock, setFilterStock] = useState<'Semua' | 'Kritis' | 'Habis'>('Semua')
+  const [filterMargin, setFilterMargin] = useState<'Semua' | 'Tinggi' | 'Sedang' | 'Rendah' | 'Negatif'>('Semua')
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -331,12 +332,28 @@ export default function Inventory() {
 
   const lowStock   = items.filter(i => i.stock <= i.min_stock && i.min_stock > 0)
   const categories = ['Semua', ...Array.from(new Set(items.map(i => i.category))).sort()]
+  function getMargin(i: Item) {
+    const modal = (i as any).cost_price > 0 ? (i as any).cost_price : avgBuyPrice[i.id]
+    if (!modal || !i.price_per_unit) return null
+    return ((i.price_per_unit - modal) / modal) * 100
+  }
+
   const filtered   = items
     .filter(i => filterCat === 'Semua' || i.category === filterCat)
     .filter(i => filterSource === 'Semua' || (i as any).gading_source === filterSource)
     .filter(i => {
       if (filterStock === 'Kritis') return i.stock <= i.min_stock && i.min_stock > 0
       if (filterStock === 'Habis')  return i.stock === 0
+      return true
+    })
+    .filter(i => {
+      if (filterMargin === 'Semua') return true
+      const m = getMargin(i)
+      if (m === null) return false
+      if (filterMargin === 'Tinggi')  return m >= 30
+      if (filterMargin === 'Sedang')  return m >= 10 && m < 30
+      if (filterMargin === 'Rendah')  return m >= 0 && m < 10
+      if (filterMargin === 'Negatif') return m < 0
       return true
     })
     .filter(i => i.name.toLowerCase().includes(search.toLowerCase()))
@@ -485,9 +502,36 @@ export default function Inventory() {
                 })}
               </div>
 
+              {/* Divider */}
+              <div style={{ width: 1, height: 20, backgroundColor: '#E8E8E6' }} />
+
+              {/* Margin pills */}
+              <div className="flex gap-1.5 flex-wrap">
+                {([
+                  ['Semua',   'Semua Margin', '#6B6B6B'],
+                  ['Tinggi',  '≥30%',         '#16A34A'],
+                  ['Sedang',  '10–30%',        '#D97706'],
+                  ['Rendah',  '<10%',          '#EA580C'],
+                  ['Negatif', 'Negatif',       '#DC2626'],
+                ] as const).map(([val, label, color]) => {
+                  const active = filterMargin === val
+                  return (
+                    <button key={val} onClick={() => { setFilterMargin(val); setSelected(new Set()) }}
+                      style={{
+                        backgroundColor: active ? color : '#F2F2F0',
+                        color:           active ? '#FFFFFF' : color,
+                        border:          '1px solid ' + (active ? color : '#E8E8E6'),
+                      }}
+                      className="px-3 py-1 rounded-full text-xs font-medium transition-colors whitespace-nowrap">
+                      {label}
+                    </button>
+                  )
+                })}
+              </div>
+
               {/* Reset filter */}
-              {(filterCat !== 'Semua' || filterStock !== 'Semua') && (
-                <button onClick={() => { setFilterCat('Semua'); setFilterStock('Semua'); setSelected(new Set()) }}
+              {(filterCat !== 'Semua' || filterStock !== 'Semua' || filterMargin !== 'Semua') && (
+                <button onClick={() => { setFilterCat('Semua'); setFilterStock('Semua'); setFilterMargin('Semua'); setSelected(new Set()) }}
                   style={{ color: '#ABABAB' }} className="text-xs hover:text-[#D91C1C] transition-colors underline">
                   Reset filter
                 </button>
