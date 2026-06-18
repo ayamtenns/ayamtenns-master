@@ -389,6 +389,21 @@ interface HppItemUpdate {
 interface HppRecipeUpdate {
   recipeName: string; outputName: string; oldHpp: number; newHpp: number
 }
+interface YieldRow {
+  ingredientId: string
+  rawItemId: string
+  rawItemName: string
+  boughtKg: number
+  recipeName: string
+  outputItemId: string
+  outputItemName: string
+  outputUnit: string
+  produced: number
+  yieldPerKg: number
+  currentUc: number
+  newUc: number
+  ingredientQty: number
+}
 
 export default function Recipes() {
   const [recipes,   setRecipes]  = useState<SubRecipe[]>([])
@@ -401,9 +416,11 @@ export default function Recipes() {
   const [editIng,   setEditIng]  = useState<Ingredient | null>(null)
   const [savingHPP, setSavingHPP] = useState<string | null>(null)  // recipe id being saved
   // HPP Bulanan
-  const [hppMonth,   setHppMonth]   = useState(() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}` })
-  const [hppRunning, setHppRunning] = useState(false)
-  const [hppResult,  setHppResult]  = useState<{ items: HppItemUpdate[]; recipes: HppRecipeUpdate[] } | null>(null)
+  const [hppMonth,    setHppMonth]    = useState(() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}` })
+  const [hppRunning,  setHppRunning]  = useState(false)
+  const [hppResult,   setHppResult]   = useState<{ items: HppItemUpdate[]; recipes: HppRecipeUpdate[] } | null>(null)
+  const [yieldData,   setYieldData]   = useState<YieldRow[] | null>(null)
+  const [yieldLoading, setYieldLoading] = useState(false)
   // Unit conversion modal state
   const [convertModal, setConvertModal] = useState<{ recipe: SubRecipe; costPerYieldUnit: number } | null>(null)
   const [convFactor, setConvFactor]     = useState('')  // how many yield_unit per 1 inventory_unit
@@ -500,9 +517,96 @@ export default function Recipes() {
     load()
   }
 
+  async function fetchYieldData() {
+    setYieldLoading(true)
+    setYieldData(null)
+    const [year, month] = hppMonth.split('-')
+    const firstDay = `${year}-${month}-01`
+    const lastDay  = new Date(Number(year), Number(month), 0).toISOString().slice(0, 10)
+
+    // 1. Purchasing totals per item
+    const { data: txns } = await supabase
+      .from('transactions')
+      .select('item_id, quantity')
+      .eq('type', 'in').eq('source', 'purchase')
+      .gte('date', firstDay).lte('date', lastDay)
+
+    if (!txns || txns.length === 0) {
+      alert('Tidak ada data purchasing bulan ini.')
+      setYieldLoading(false)
+      return
+    }
+    const boughtMap: Record<string, number> = {}
+    for (const t of txns) {
+      if (t.item_id) boughtMap[t.item_id] = (boughtMap[t.item_id] || 0) + t.quantity
+    }
+
+    // 2. Find sub_recipe_ingredients that use these raw materials
+    const { data: ings } = await supabase
+      .from('sub_recipe_ingredients')
+      .select('id, recipe_id, item_id, quantity, unit_conversion, item:items(name), recipe:sub_recipes(id, name, output_item_id, output_item:items!output_item_id(id, name, unit))')
+      .in('item_id', Object.keys(boughtMap))
+
+    if (!ings || ings.length === 0) { setYieldLoading(false); return }
+
+    // 3. Production totals for the output items
+    const outputIds = [...new Set(ings.map(i => (i.recipe as any)?.output_item_id).filter(Boolean))]
+    const { data: prodLogs } = await supabase
+      .from('production_logs')
+      .select('item_id, quantity')
+      .in('item_id', outputIds)
+      .gte('produced_at', firstDay).lte('produced_at', lastDay)
+
+    const producedMap: Record<string, number> = {}
+    for (const p of prodLogs ?? []) {
+      producedMap[p.item_id] = (producedMap[p.item_id] || 0) + p.quantity
+    }
+
+    // 4. Build yield rows
+    const rows: YieldRow[] = []
+    for (const ing of ings) {
+      const recipe = ing.recipe as any
+      if (!recipe?.output_item_id) continue
+      const boughtKg  = boughtMap[ing.item_id!] || 0
+      const produced  = producedMap[recipe.output_item_id] || 0
+      if (boughtKg === 0 || produced === 0) continue
+      const yieldPerKg = produced / boughtKg
+      const newUc      = (ing.quantity as number) * yieldPerKg
+      rows.push({
+        ingredientId:   ing.id,
+        rawItemId:      ing.item_id!,
+        rawItemName:    (ing.item as any)?.name ?? ing.item_id!,
+        boughtKg,
+        recipeName:     recipe.name,
+        outputItemId:   recipe.output_item_id,
+        outputItemName: recipe.output_item?.name ?? '',
+        outputUnit:     recipe.output_item?.unit ?? '',
+        produced,
+        yieldPerKg,
+        currentUc:      ing.unit_conversion as number,
+        newUc,
+        ingredientQty:  ing.quantity as number,
+      })
+    }
+    setYieldData(rows)
+    setYieldLoading(false)
+  }
+
   async function runHppBulanan() {
     setHppRunning(true)
     setHppResult(null)
+
+    // Apply yield-based unit_conversions if yield data is loaded
+    if (yieldData && yieldData.length > 0) {
+      for (const row of yieldData) {
+        if (row.newUc > 0 && Math.abs(row.newUc - row.currentUc) > 0.01) {
+          await supabase.from('sub_recipe_ingredients')
+            .update({ unit_conversion: row.newUc })
+            .eq('id', row.ingredientId)
+        }
+      }
+    }
+
     const [year, month] = hppMonth.split('-')
     const firstDay = `${year}-${month}-01`
     const lastDay  = new Date(Number(year), Number(month), 0).toISOString().slice(0, 10)
@@ -611,17 +715,58 @@ export default function Recipes() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <label style={{ fontSize: 12, color: muted }}>Bulan</label>
-              <input type="month" value={hppMonth} onChange={e => { setHppMonth(e.target.value); setHppResult(null) }}
+              <input type="month" value={hppMonth} onChange={e => { setHppMonth(e.target.value); setHppResult(null); setYieldData(null) }}
                 style={{ border: `1px solid ${bdr}`, borderRadius: 8, padding: '7px 12px', fontSize: 14, color: ink, outline: 'none' }} />
             </div>
+            <button onClick={fetchYieldData} disabled={yieldLoading}
+              style={{ marginTop: 20, backgroundColor: yieldLoading ? '#ccc' : '#fff', color: yieldLoading ? '#999' : ink, border: `1px solid ${bdr}`, borderRadius: 10, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: yieldLoading ? 'not-allowed' : 'pointer' }}>
+              {yieldLoading ? 'Memuat...' : '📊 Lihat Yield'}
+            </button>
             <button onClick={runHppBulanan} disabled={hppRunning}
               style={{ marginTop: 20, backgroundColor: hppRunning ? '#ccc' : '#0E0E0E', color: '#fff', border: 'none', borderRadius: 10, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: hppRunning ? 'not-allowed' : 'pointer' }}>
               {hppRunning ? 'Menghitung...' : 'Hitung & Simpan HPP'}
             </button>
           </div>
           <p style={{ fontSize: 12, color: muted, marginTop: 8 }}>
-            Tarik rata-rata harga beli dari Purchasing → update cost bahan baku → recalculate HPP semua produk
+            {yieldData ? '✅ Yield bulan ini sudah dimuat — HPP akan pakai yield terbaru.' : 'Klik "Lihat Yield" dulu untuk update yield sebelum hitung HPP, atau langsung hitung pakai yield sebelumnya.'}
           </p>
+
+          {/* Yield table */}
+          {yieldData && yieldData.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: muted, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Yield Rata-rata Bulan Ini</div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: `1px solid ${bdr}` }}>
+                      {['Bahan Baku', 'Produk', 'Beli (kg)', 'Produksi', 'Yield/kg', 'UC Lama → Baru'].map(h => (
+                        <th key={h} style={{ textAlign: 'left', padding: '6px 10px', color: muted, fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {yieldData.map(row => {
+                      const changed = Math.abs(row.newUc - row.currentUc) > 0.01
+                      return (
+                        <tr key={row.ingredientId} style={{ borderBottom: `1px solid ${bdr}` }}>
+                          <td style={{ padding: '8px 10px', fontWeight: 600 }}>{row.rawItemName}</td>
+                          <td style={{ padding: '8px 10px', color: muted }}>{row.outputItemName}</td>
+                          <td style={{ padding: '8px 10px' }}>{fmt(row.boughtKg)} kg</td>
+                          <td style={{ padding: '8px 10px' }}>{fmt(row.produced)} {row.outputUnit}</td>
+                          <td style={{ padding: '8px 10px', fontWeight: 600 }}>{row.yieldPerKg.toFixed(2)} {row.outputUnit}/kg</td>
+                          <td style={{ padding: '8px 10px', color: changed ? '#D97706' : muted, fontWeight: changed ? 700 : 400 }}>
+                            {row.currentUc.toFixed(2)} → {row.newUc.toFixed(2)}
+                            {changed && <span style={{ marginLeft: 6, fontSize: 11 }}>⚠️</span>}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <p style={{ fontSize: 12, color: muted, marginTop: 8 }}>Nilai UC baru akan diterapkan otomatis saat klik "Hitung &amp; Simpan HPP".</p>
+            </div>
+          )}
 
           {hppResult && (
             <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
