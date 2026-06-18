@@ -6,6 +6,7 @@ export interface Item {
   price_per_unit: number
   stock: number
   stock_gading: number
+  stock_produksi: number
   min_stock: number
   notes: string
   par_order_qty: number
@@ -113,6 +114,22 @@ export interface TransferRequestItem {
   quantity_sent: number | null
   created_at: string
   item?: Pick<Item, 'name' | 'unit' | 'category'>
+}
+
+export interface BomEntry {
+  id: string
+  output_item_id: string
+  input_type: 'material' | 'item' | 'labor'
+  input_material_id: string | null
+  input_item_id: string | null
+  input_label: string
+  qty_per_output_unit: number
+  unit: string
+  cost_per_output_unit: number
+  notes: string
+  created_at: string
+  material?: Pick<GadingMaterial, 'name' | 'unit'>
+  item?: Pick<Item, 'name' | 'unit'>
 }
 
 export interface Expense {

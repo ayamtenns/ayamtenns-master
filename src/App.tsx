@@ -11,6 +11,12 @@ import Financial from './pages/Financial'
 import Transfers from './pages/Transfers'
 import RequestForm from './pages/RequestForm'
 import Gading from './pages/Gading'
+import OpnameForm from './pages/OpnameForm'
+import OpnamePage from './pages/Opname'
+import Recipes from './pages/Recipes'
+import Produksi from './pages/Produksi'
+import LaporanProduksi from './pages/LaporanProduksi'
+import RiwayatProduksi from './pages/RiwayatProduksi'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   if (!isAuthenticated()) return <Navigate to="/login" replace />
@@ -31,10 +37,17 @@ export default function App() {
           <Route path="/financial" element={<Financial />} />
           <Route path="/transfers" element={<Transfers />} />
           <Route path="/gading" element={<Gading />} />
+          <Route path="/opname" element={<OpnamePage />} />
+          <Route path="/recipes" element={<Recipes />} />
+          <Route path="/laporan-produksi" element={<LaporanProduksi />} />
+          <Route path="/riwayat-produksi" element={<RiwayatProduksi />} />
         </Route>
         {/* Public — no auth required */}
         <Route path="/request-bsd" element={<RequestForm />} />
         <Route path="/request" element={<Navigate to="/request-bsd" replace />} />
+        <Route path="/opname-bsd"    element={<OpnameForm branch="BSD" />} />
+        <Route path="/opname-gading" element={<OpnameForm branch="Gading" />} />
+        <Route path="/produksi" element={<Produksi />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

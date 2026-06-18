@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import type { Item, GadingProduction, GadingMaterial } from '../lib/types'
+import type { Item, GadingProduction, GadingMaterial, BomEntry } from '../lib/types'
 import PageHeader from '../components/PageHeader'
-import { Plus, ChevronDown, ChevronUp, AlertCircle, Factory, ArrowDownToLine, ArrowUpFromLine, X, Package } from 'lucide-react'
+import { Plus, ChevronDown, ChevronUp, AlertCircle, Factory, ArrowDownToLine, ArrowUpFromLine, X, Package, Pencil, Trash2, BookOpen } from 'lucide-react'
 
 type Tab     = 'stok' | 'bahan' | 'riwayat'
 type QtyMap  = Record<string, string>
@@ -26,15 +26,14 @@ function TabBtn({ label, active, onClick }: { label: string; active: boolean; on
 
 // ── Modal: Tambah Stok Jadi ───────────────────────────────────────────────────
 function TambahStokModal({ items, onClose, onSaved }: { items: Item[]; onClose: () => void; onSaved: () => void }) {
-  const [type, setType]     = useState<'produksi' | 'supplier'>('produksi')
-  const [date, setDate]     = useState(new Date().toISOString().split('T')[0])
-  const [qtys, setQtys]     = useState<QtyMap>({})
-  const [notes, setNotes]   = useState('')
-  const [saving, setSaving] = useState(false)
-  const [error, setError]   = useState('')
+  const [date, setDate]       = useState(new Date().toISOString().split('T')[0])
+  const [qtys, setQtys]       = useState<QtyMap>({})
+  const [notes, setNotes]     = useState('')
+  const [saving, setSaving]   = useState(false)
+  const [error, setError]     = useState('')
 
-  // Filter items berdasarkan tipe yang dipilih
-  const visibleItems = items.filter(i => i.gading_source === type)
+  // Hanya tampilkan item yang diproduksi di Gading (bukan supplier)
+  const visibleItems = items.filter(i => i.gading_source === 'produksi')
   const categories   = [...new Set(visibleItems.map(i => i.category))]
   const produced     = visibleItems.filter(i => parseFloat(qtys[i.id] || '0') > 0)
 
@@ -46,12 +45,16 @@ function TambahStokModal({ items, onClose, onSaved }: { items: Item[]; onClose: 
     try {
       const { data: prod, error: e1 } = await supabase
         .from('gading_productions')
-        .insert({ date, notes: notes.trim(), type })
+        .insert({ date, notes: notes.trim(), type: 'produksi' })
         .select('id').single()
       if (e1) throw e1
 
       const { error: e2 } = await supabase.from('gading_production_items').insert(
-        produced.map(i => ({ production_id: prod.id, item_id: i.id, quantity: parseFloat(qtys[i.id]) }))
+        produced.map(i => ({
+          production_id: prod.id,
+          item_id: i.id,
+          quantity: parseFloat(qtys[i.id]),
+        }))
       )
       if (e2) throw e2
 
@@ -77,18 +80,13 @@ function TambahStokModal({ items, onClose, onSaved }: { items: Item[]; onClose: 
         </div>
 
         <div style={{ overflowY: 'auto', flex: 1, padding: '16px 24px' }}>
-          {/* Type + Date row */}
-          <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+          {/* Date row */}
+          <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'flex-end' }}>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 11, color: muted, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, display: 'block', marginBottom: 6 }}>Sumber</label>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {(['produksi', 'supplier'] as const).map(t => (
-                  <button key={t} type="button" onClick={() => { setType(t); setQtys({}) }}
-                    style={{ flex: 1, padding: '8px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: `1px solid ${type === t ? '#16A34A' : bdr}`, backgroundColor: type === t ? '#F0FDF4' : '#F8F8F6', color: type === t ? '#16A34A' : muted }}>
-                    {t === 'produksi' ? '🏭 Produksi' : '🚚 Dari Supplier'}
-                  </button>
-                ))}
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8, fontSize: 12, fontWeight: 600, color: '#16A34A' }}>
+                🏭 Hasil Produksi Gading
               </div>
+              <div style={{ fontSize: 11, color: muted, marginTop: 4 }}>Untuk beli dari supplier, gunakan halaman <strong>Purchasing</strong></div>
             </div>
             <div>
               <label style={{ fontSize: 11, color: muted, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, display: 'block', marginBottom: 6 }}>Tanggal</label>
@@ -263,20 +261,193 @@ function TambahItemStokModal({ existingCategories, onClose, onSaved }: { existin
   )
 }
 
-// ── Modal: Tambah Item Bahan Baku ─────────────────────────────────────────────
-function TambahMaterialModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [name, setName]   = useState('')
-  const [unit, setUnit]   = useState('kg')
-  const [cat, setCat]     = useState('Bahan Baku')
-  const [notes, setNotes] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [error, setError]   = useState('')
+// ── Modal: Edit Item Stok Jadi ────────────────────────────────────────────────
+function EditItemModal({ item, existingCategories, onClose, onSaved }: { item: Item; existingCategories: string[]; onClose: () => void; onSaved: () => void }) {
+  const [name, setName]         = useState(item.name)
+  const [unit, setUnit]         = useState(item.unit)
+  const [cat, setCat]           = useState(item.category)
+  const [newCat, setNewCat]     = useState('')
+  const [source, setSource]     = useState<'produksi' | 'supplier'>(item.gading_source ?? 'produksi')
+  const [minStock, setMinStock] = useState(String(item.min_stock ?? 0))
+  const [notes, setNotes]       = useState(item.notes ?? '')
+  const [saving, setSaving]     = useState(false)
+  const [error, setError]       = useState('')
+
+  const finalCat = cat === '__new__' ? newCat.trim() : cat
 
   async function handleSave() {
     if (!name.trim()) { setError('Nama wajib diisi.'); return }
+    if (!finalCat)    { setError('Kategori wajib diisi.'); return }
     setSaving(true); setError('')
     try {
-      const { error: e } = await supabase.from('gading_materials').insert({ name: name.trim(), unit: unit.trim(), category: cat.trim(), notes: notes.trim() })
+      const { error: e } = await supabase.from('items').update({
+        name: name.trim(), unit: unit.trim(), category: finalCat,
+        gading_source: source, min_stock: parseFloat(minStock) || 0, notes: notes.trim(),
+      }).eq('id', item.id)
+      if (e) throw e
+      onSaved()
+    } catch (e: any) { setError(e.message ?? 'Gagal menyimpan.') }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div style={{ backgroundColor: white, borderRadius: 16, width: '100%', maxWidth: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+        <div style={{ padding: '18px 24px', borderBottom: `1px solid ${bdr}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontFamily: "'Archivo Black', sans-serif", fontSize: 15, color: ink }}>Edit Item Stok Jadi</div>
+          <button onClick={onClose} style={{ background: '#F2F2F0', border: 'none', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={14} /></button>
+        </div>
+        <div style={{ padding: '16px 24px' }}>
+          {[
+            { label: 'Nama Item', val: name, set: setName, placeholder: '' },
+            { label: 'Satuan', val: unit, set: setUnit, placeholder: '' },
+          ].map(f => (
+            <div key={f.label} style={{ marginBottom: 14 }}>
+              <label style={{ fontSize: 11, color: muted, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, display: 'block', marginBottom: 5 }}>{f.label}</label>
+              <input value={f.val} onChange={e => f.set(e.target.value)} placeholder={f.placeholder}
+                style={{ width: '100%', padding: '9px 12px', fontSize: 13, border: `1px solid ${bdr}`, borderRadius: 8, outline: 'none', color: ink, backgroundColor: '#F8F8F6', boxSizing: 'border-box' }} />
+            </div>
+          ))}
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ fontSize: 11, color: muted, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, display: 'block', marginBottom: 5 }}>Kategori</label>
+            <select value={cat} onChange={e => { setCat(e.target.value); setNewCat('') }}
+              style={{ width: '100%', padding: '9px 12px', fontSize: 13, border: `1px solid ${bdr}`, borderRadius: 8, outline: 'none', color: ink, backgroundColor: '#F8F8F6', boxSizing: 'border-box', cursor: 'pointer' }}>
+              {existingCategories.map(c => <option key={c} value={c}>{c}</option>)}
+              <option value="__new__">+ Kategori baru...</option>
+            </select>
+            {cat === '__new__' && (
+              <input value={newCat} onChange={e => setNewCat(e.target.value)} placeholder="Nama kategori baru" autoFocus
+                style={{ width: '100%', marginTop: 8, padding: '9px 12px', fontSize: 13, border: `1px solid #16A34A`, borderRadius: 8, outline: 'none', color: ink, backgroundColor: '#F8F8F6', boxSizing: 'border-box' }} />
+            )}
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ fontSize: 11, color: muted, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, display: 'block', marginBottom: 5 }}>Asal</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {(['produksi', 'supplier'] as const).map(s => (
+                <button key={s} type="button" onClick={() => setSource(s)}
+                  style={{ flex: 1, padding: '8px 0', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: `1px solid ${source === s ? '#16A34A' : bdr}`, backgroundColor: source === s ? '#F0FDF4' : '#F8F8F6', color: source === s ? '#16A34A' : muted }}>
+                  {s === 'produksi' ? '🏭 Produksi' : '🚚 Supplier'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ fontSize: 11, color: muted, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, display: 'block', marginBottom: 5 }}>Min Stok BSD</label>
+            <input type="number" min="0" value={minStock} onChange={e => setMinStock(e.target.value)}
+              style={{ width: '100%', padding: '9px 12px', fontSize: 13, border: `1px solid ${bdr}`, borderRadius: 8, outline: 'none', color: ink, backgroundColor: '#F8F8F6', boxSizing: 'border-box' }} />
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ fontSize: 11, color: muted, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, display: 'block', marginBottom: 5 }}>Catatan</label>
+            <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="opsional"
+              style={{ width: '100%', padding: '9px 12px', fontSize: 13, border: `1px solid ${bdr}`, borderRadius: 8, outline: 'none', color: ink, backgroundColor: '#F8F8F6', boxSizing: 'border-box' }} />
+          </div>
+          {error && <div style={{ padding: '8px 12px', backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, fontSize: 12, color: '#DC2626', marginBottom: 12 }}>{error}</div>}
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <button onClick={onClose} style={{ padding: '10px 20px', borderRadius: 10, border: `1px solid ${bdr}`, backgroundColor: white, color: muted, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Batal</button>
+            <button onClick={handleSave} disabled={saving}
+              style={{ padding: '10px 20px', borderRadius: 10, border: 'none', backgroundColor: saving ? '#ABABAB' : '#16A34A', color: white, fontSize: 13, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer' }}>
+              {saving ? '...' : 'Simpan'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Modal: Edit Bahan Baku ────────────────────────────────────────────────────
+function EditMaterialModal({ material, existingCategories, onClose, onSaved }: { material: GadingMaterial; existingCategories: string[]; onClose: () => void; onSaved: () => void }) {
+  const [name, setName]   = useState(material.name)
+  const [unit, setUnit]   = useState(material.unit)
+  const [cat, setCat]     = useState(material.category)
+  const [newCat, setNewCat] = useState('')
+  const [notes, setNotes] = useState(material.notes ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError]   = useState('')
+
+  const finalCat = cat === '__new__' ? newCat.trim() : cat
+
+  async function handleSave() {
+    if (!name.trim()) { setError('Nama wajib diisi.'); return }
+    if (!finalCat)    { setError('Kategori wajib diisi.'); return }
+    setSaving(true); setError('')
+    try {
+      const { error: e } = await supabase.from('gading_materials').update({
+        name: name.trim(), unit: unit.trim(), category: finalCat, notes: notes.trim(),
+      }).eq('id', material.id)
+      if (e) throw e
+      onSaved()
+    } catch (e: any) { setError(e.message ?? 'Gagal menyimpan.') }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div style={{ backgroundColor: white, borderRadius: 16, width: '100%', maxWidth: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+        <div style={{ padding: '18px 24px', borderBottom: `1px solid ${bdr}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontFamily: "'Archivo Black', sans-serif", fontSize: 15, color: ink }}>Edit Bahan Baku</div>
+          <button onClick={onClose} style={{ background: '#F2F2F0', border: 'none', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={14} /></button>
+        </div>
+        <div style={{ padding: '16px 24px' }}>
+          {[
+            { label: 'Nama Bahan', val: name, set: setName },
+            { label: 'Satuan', val: unit, set: setUnit },
+          ].map(f => (
+            <div key={f.label} style={{ marginBottom: 14 }}>
+              <label style={{ fontSize: 11, color: muted, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, display: 'block', marginBottom: 5 }}>{f.label}</label>
+              <input value={f.val} onChange={e => f.set(e.target.value)}
+                style={{ width: '100%', padding: '9px 12px', fontSize: 13, border: `1px solid ${bdr}`, borderRadius: 8, outline: 'none', color: ink, backgroundColor: '#F8F8F6', boxSizing: 'border-box' }} />
+            </div>
+          ))}
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ fontSize: 11, color: muted, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, display: 'block', marginBottom: 5 }}>Kategori</label>
+            <select value={cat} onChange={e => { setCat(e.target.value); setNewCat('') }}
+              style={{ width: '100%', padding: '9px 12px', fontSize: 13, border: `1px solid ${bdr}`, borderRadius: 8, outline: 'none', color: ink, backgroundColor: '#F8F8F6', boxSizing: 'border-box', cursor: 'pointer' }}>
+              {existingCategories.map(c => <option key={c} value={c}>{c}</option>)}
+              <option value="__new__">+ Kategori baru...</option>
+            </select>
+            {cat === '__new__' && (
+              <input value={newCat} onChange={e => setNewCat(e.target.value)} placeholder="Nama kategori baru" autoFocus
+                style={{ width: '100%', marginTop: 8, padding: '9px 12px', fontSize: 13, border: `1px solid #16A34A`, borderRadius: 8, outline: 'none', color: ink, backgroundColor: '#F8F8F6', boxSizing: 'border-box' }} />
+            )}
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ fontSize: 11, color: muted, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, display: 'block', marginBottom: 5 }}>Catatan</label>
+            <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="opsional"
+              style={{ width: '100%', padding: '9px 12px', fontSize: 13, border: `1px solid ${bdr}`, borderRadius: 8, outline: 'none', color: ink, backgroundColor: '#F8F8F6', boxSizing: 'border-box' }} />
+          </div>
+          {error && <div style={{ padding: '8px 12px', backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, fontSize: 12, color: '#DC2626', marginBottom: 12 }}>{error}</div>}
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <button onClick={onClose} style={{ padding: '10px 20px', borderRadius: 10, border: `1px solid ${bdr}`, backgroundColor: white, color: muted, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Batal</button>
+            <button onClick={handleSave} disabled={saving}
+              style={{ padding: '10px 20px', borderRadius: 10, border: 'none', backgroundColor: saving ? '#ABABAB' : ink, color: white, fontSize: 13, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer' }}>
+              {saving ? '...' : 'Simpan'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Modal: Tambah Item Bahan Baku ─────────────────────────────────────────────
+function TambahMaterialModal({ existingCategories, onClose, onSaved }: { existingCategories: string[]; onClose: () => void; onSaved: () => void }) {
+  const [name, setName]     = useState('')
+  const [unit, setUnit]     = useState('kg')
+  const [cat, setCat]       = useState('')
+  const [newCat, setNewCat] = useState('')
+  const [notes, setNotes]   = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError]   = useState('')
+
+  const finalCat = cat === '__new__' ? newCat.trim() : cat
+
+  async function handleSave() {
+    if (!name.trim()) { setError('Nama wajib diisi.'); return }
+    if (!finalCat)    { setError('Kategori wajib diisi.'); return }
+    setSaving(true); setError('')
+    try {
+      const { error: e } = await supabase.from('gading_materials').insert({ name: name.trim(), unit: unit.trim(), category: finalCat, notes: notes.trim() })
       if (e) throw e
       onSaved()
     } catch (e: any) { setError(e.message ?? 'Gagal menyimpan.') }
@@ -294,7 +465,6 @@ function TambahMaterialModal({ onClose, onSaved }: { onClose: () => void; onSave
           {[
             { label: 'Nama Bahan', val: name, set: setName, placeholder: 'misal: Tepung Terigu' },
             { label: 'Satuan', val: unit, set: setUnit, placeholder: 'misal: kg, liter, gram' },
-            { label: 'Kategori', val: cat, set: setCat, placeholder: 'misal: Tepung, Bumbu, Ayam' },
           ].map(f => (
             <div key={f.label} style={{ marginBottom: 14 }}>
               <label style={{ fontSize: 11, color: muted, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, display: 'block', marginBottom: 5 }}>{f.label}</label>
@@ -302,6 +472,19 @@ function TambahMaterialModal({ onClose, onSaved }: { onClose: () => void; onSave
                 style={{ width: '100%', padding: '9px 12px', fontSize: 13, border: `1px solid ${bdr}`, borderRadius: 8, outline: 'none', color: ink, backgroundColor: '#F8F8F6', boxSizing: 'border-box' }} />
             </div>
           ))}
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ fontSize: 11, color: muted, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, display: 'block', marginBottom: 5 }}>Kategori</label>
+            <select value={cat} onChange={e => { setCat(e.target.value); setNewCat('') }}
+              style={{ width: '100%', padding: '9px 12px', fontSize: 13, border: `1px solid ${bdr}`, borderRadius: 8, outline: 'none', color: cat ? ink : muted, backgroundColor: '#F8F8F6', boxSizing: 'border-box', cursor: 'pointer' }}>
+              <option value="">-- Pilih kategori --</option>
+              {existingCategories.map(c => <option key={c} value={c}>{c}</option>)}
+              <option value="__new__">+ Kategori baru...</option>
+            </select>
+            {cat === '__new__' && (
+              <input value={newCat} onChange={e => setNewCat(e.target.value)} placeholder="Nama kategori baru" autoFocus
+                style={{ width: '100%', marginTop: 8, padding: '9px 12px', fontSize: 13, border: `1px solid #16A34A`, borderRadius: 8, outline: 'none', color: ink, backgroundColor: '#F8F8F6', boxSizing: 'border-box' }} />
+            )}
+          </div>
           <div style={{ marginBottom: 14 }}>
             <label style={{ fontSize: 11, color: muted, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, display: 'block', marginBottom: 5 }}>Catatan (opsional)</label>
             <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="misal: untuk tepung coating ayam"
@@ -327,19 +510,27 @@ function StokBahanModal({
 }: { materials: GadingMaterial[]; mode: 'in' | 'out'; onClose: () => void; onSaved: () => void }) {
   const [date, setDate]       = useState(new Date().toISOString().split('T')[0])
   const [qtys, setQtys]       = useState<QtyMap>({})
+  const [prices, setPrices]   = useState<QtyMap>({})   // unit_price per material (hanya untuk 'in')
+  const [supplier, setSupplier] = useState('')
   const [notes, setNotes]     = useState('')
   const [saving, setSaving]   = useState(false)
   const [error, setError]     = useState('')
 
   const active = materials.filter(m => parseFloat(qtys[m.id] || '0') > 0)
 
-  function setQty(id: string, val: string) { setQtys(p => ({ ...p, [id]: val })) }
+  function setQty(id: string, val: string)   { setQtys(p => ({ ...p, [id]: val })) }
+  function setPrice(id: string, val: string) { setPrices(p => ({ ...p, [id]: val })) }
 
   async function handleSave() {
     if (active.length === 0) { setError('Isi minimal 1 bahan.'); return }
     setSaving(true); setError('')
     try {
-      const txs = active.map(m => ({ material_id: m.id, date, type: mode, quantity: parseFloat(qtys[m.id]), notes: notes.trim() }))
+      const txs = active.map(m => ({
+        material_id: m.id, date, type: mode,
+        quantity: parseFloat(qtys[m.id]),
+        unit_price: mode === 'in' ? (parseFloat(prices[m.id] || '0') || 0) : 0,
+        notes: (mode === 'in' && supplier.trim()) ? supplier.trim() : notes.trim(),
+      }))
       const { error: e1 } = await supabase.from('gading_material_transactions').insert(txs)
       if (e1) throw e1
 
@@ -377,10 +568,19 @@ function StokBahanModal({
         </div>
 
         <div style={{ overflowY: 'auto', flex: 1, padding: '16px 24px' }}>
-          <div style={{ marginBottom: 14 }}>
-            <label style={{ fontSize: 11, color: muted, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, display: 'block', marginBottom: 5 }}>Tanggal</label>
-            <input type="date" value={date} onChange={e => setDate(e.target.value)}
-              style={{ padding: '8px 10px', fontSize: 13, border: `1px solid ${bdr}`, borderRadius: 8, outline: 'none', color: ink, backgroundColor: '#F8F8F6' }} />
+          <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
+            <div>
+              <label style={{ fontSize: 11, color: muted, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, display: 'block', marginBottom: 5 }}>Tanggal</label>
+              <input type="date" value={date} onChange={e => setDate(e.target.value)}
+                style={{ padding: '8px 10px', fontSize: 13, border: `1px solid ${bdr}`, borderRadius: 8, outline: 'none', color: ink, backgroundColor: '#F8F8F6' }} />
+            </div>
+            {mode === 'in' && (
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 11, color: muted, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, display: 'block', marginBottom: 5 }}>Supplier / Sumber</label>
+                <input value={supplier} onChange={e => setSupplier(e.target.value)} placeholder="Tokped, pak Budi, dll"
+                  style={{ width: '100%', padding: '8px 10px', fontSize: 13, border: `1px solid ${bdr}`, borderRadius: 8, outline: 'none', color: ink, backgroundColor: '#F8F8F6', boxSizing: 'border-box' }} />
+              </div>
+            )}
           </div>
 
           {materials.length === 0 ? (
@@ -390,20 +590,35 @@ function StokBahanModal({
               const qty    = parseFloat(qtys[m.id] || '0')
               const active = qty > 0
               return (
-                <div key={m.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', borderRadius: 8, marginBottom: 3, backgroundColor: active ? accentBg : '#F8F8F6', border: `1px solid ${active ? accentBdr : 'transparent'}` }}>
-                  <div style={{ flex: 1 }}>
-                    <span style={{ fontSize: 13, fontWeight: 500, color: ink }}>{m.name}</span>
-                    <span style={{ fontSize: 11, color: muted, marginLeft: 6 }}>{m.unit}</span>
-                    <span style={{ fontSize: 11, color: '#ABABAB', marginLeft: 6 }}>stok: {m.stock}</span>
+                <div key={m.id} style={{ borderRadius: 8, marginBottom: 3, backgroundColor: active ? accentBg : '#F8F8F6', border: `1px solid ${active ? accentBdr : 'transparent'}`, padding: '8px 10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ flex: 1 }}>
+                      <span style={{ fontSize: 13, fontWeight: 500, color: ink }}>{m.name}</span>
+                      <span style={{ fontSize: 11, color: muted, marginLeft: 6 }}>{m.unit}</span>
+                      <span style={{ fontSize: 11, color: '#ABABAB', marginLeft: 6 }}>stok: {m.stock}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+                      <button type="button" onClick={() => setQty(m.id, String(Math.max(0, qty - 1)))}
+                        style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${bdr}`, backgroundColor: '#F2F2F0', color: ink, fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                      <input type="number" min="0" step="0.5" value={qtys[m.id] || '0'} onChange={e => setQty(m.id, e.target.value)}
+                        style={{ width: 60, textAlign: 'center', padding: '4px', fontSize: 14, fontWeight: 600, color: active ? accent : ink, border: `1px solid ${active ? accentBdr : bdr}`, borderRadius: 6, backgroundColor: active ? accentBg : '#F8F8F6', outline: 'none' }} />
+                      <button type="button" onClick={() => setQty(m.id, String(qty + 1))}
+                        style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${accent}`, backgroundColor: accent, color: white, fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
-                    <button type="button" onClick={() => setQty(m.id, String(Math.max(0, qty - 1)))}
-                      style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${bdr}`, backgroundColor: '#F2F2F0', color: ink, fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-                    <input type="number" min="0" step="0.5" value={qtys[m.id] || '0'} onChange={e => setQty(m.id, e.target.value)}
-                      style={{ width: 60, textAlign: 'center', padding: '4px', fontSize: 14, fontWeight: 600, color: active ? accent : ink, border: `1px solid ${active ? accentBdr : bdr}`, borderRadius: 6, backgroundColor: active ? accentBg : '#F8F8F6', outline: 'none' }} />
-                    <button type="button" onClick={() => setQty(m.id, String(qty + 1))}
-                      style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${accent}`, backgroundColor: accent, color: white, fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
-                  </div>
+                  {mode === 'in' && active && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                      <span style={{ fontSize: 11, color: muted, whiteSpace: 'nowrap' }}>Harga beli/unit (Rp):</span>
+                      <input type="number" min="0" value={prices[m.id] || ''} onChange={e => setPrice(m.id, e.target.value)}
+                        placeholder="0"
+                        style={{ flex: 1, padding: '4px 8px', fontSize: 12, border: `1px solid ${accentBdr}`, borderRadius: 6, backgroundColor: white, outline: 'none', color: ink }} />
+                      {prices[m.id] && qty > 0 && (
+                        <span style={{ fontSize: 11, color: accent, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                          = Rp {(parseFloat(prices[m.id]) * qty).toLocaleString('id-ID')}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             })
@@ -429,6 +644,225 @@ function StokBahanModal({
   )
 }
 
+// ── Modal: BOM / Resep ───────────────────────────────────────────────────────
+function BomModal({ item, materials, items, onClose }: {
+  item: Item; materials: GadingMaterial[]; items: Item[]; onClose: () => void
+}) {
+  const [entries, setEntries]   = useState<BomEntry[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [saving, setSaving]     = useState(false)
+  const [error, setError]       = useState('')
+
+  // form state untuk baris baru
+  const [inputType, setInputType]     = useState<'material' | 'item' | 'labor'>('material')
+  const [inputMaterialId, setMatId]   = useState('')
+  const [inputItemId, setItemId]      = useState('')
+  const [inputLabel, setInputLabel]   = useState('')
+  const [qty, setQty]                 = useState('')
+  const [unit, setUnit]               = useState('')
+  const [costPerUnit, setCostPerUnit] = useState('')
+  const [entryNotes, setEntryNotes]   = useState('')
+
+  useEffect(() => {
+    supabase.from('bom_entries')
+      .select('*')
+      .eq('output_item_id', item.id)
+      .order('created_at')
+      .then(({ data }) => { setEntries((data ?? []) as BomEntry[]); setLoading(false) })
+  }, [item.id])
+
+  function resetForm() {
+    setInputType('material'); setMatId(''); setItemId(''); setInputLabel('')
+    setQty(''); setUnit(''); setCostPerUnit(''); setEntryNotes('')
+  }
+
+  async function handleAdd() {
+    if (!qty) { setError('Qty wajib diisi.'); return }
+    if (inputType === 'labor' && !inputLabel) { setError('Label upah wajib diisi.'); return }
+    if (inputType === 'material' && !inputMaterialId) { setError('Pilih bahan baku.'); return }
+    if (inputType === 'item' && !inputItemId) { setError('Pilih produk Gading.'); return }
+
+    const mat  = materials.find(m => m.id === inputMaterialId)
+    const itm  = items.find(i => i.id === inputItemId)
+    const label = inputType === 'labor' ? inputLabel
+                : inputType === 'material' ? (mat?.name ?? '') : (itm?.name ?? '')
+    const autoUnit = inputType === 'material' ? (mat?.unit ?? unit) : inputType === 'item' ? (itm?.unit ?? unit) : unit
+
+    setSaving(true); setError('')
+    try {
+      const { data, error: e } = await supabase.from('bom_entries').insert({
+        output_item_id: item.id,
+        input_type: inputType,
+        input_material_id: inputType === 'material' ? inputMaterialId : null,
+        input_item_id: inputType === 'item' ? inputItemId : null,
+        input_label: label,
+        qty_per_output_unit: parseFloat(qty),
+        unit: unit || autoUnit,
+        cost_per_output_unit: parseFloat(costPerUnit || '0'),
+        notes: entryNotes.trim(),
+      }).select().single()
+      if (e) throw e
+      setEntries(prev => [...prev, data as BomEntry])
+      resetForm()
+    } catch (e: any) { setError(e.message ?? 'Gagal menyimpan.') }
+    finally { setSaving(false) }
+  }
+
+  async function handleDelete(id: string) {
+    await supabase.from('bom_entries').delete().eq('id', id)
+    setEntries(prev => prev.filter(e => e.id !== id))
+  }
+
+  const TYPE_COLORS = {
+    material: { bg: '#EFF6FF', color: '#2563EB', border: '#BFDBFE', label: '🧂 Bahan Baku' },
+    item:     { bg: '#F0FDF4', color: '#16A34A', border: '#BBF7D0', label: '📦 Produk Gading' },
+    labor:    { bg: '#FFFBEB', color: '#D97706', border: '#FDE68A', label: '👷 Upah/Jasa' },
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div style={{ backgroundColor: white, borderRadius: 16, width: '100%', maxWidth: 620, maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
+        {/* Header */}
+        <div style={{ padding: '18px 24px', borderBottom: `1px solid ${bdr}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+          <div>
+            <div style={{ fontFamily: "'Archivo Black', sans-serif", fontSize: 15, color: ink }}>Resep / BOM</div>
+            <div style={{ fontSize: 12, color: muted, marginTop: 2 }}>
+              {item.name} — komponen per 1 {item.unit} output
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: '#F2F2F0', border: 'none', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={14} /></button>
+        </div>
+
+        <div style={{ overflowY: 'auto', flex: 1, padding: '16px 24px' }}>
+          {/* Existing entries */}
+          {loading ? (
+            <div style={{ color: muted, fontSize: 13, textAlign: 'center', padding: 20 }}>Memuat...</div>
+          ) : entries.length === 0 ? (
+            <div style={{ backgroundColor: '#F8F8F6', borderRadius: 10, padding: '16px', textAlign: 'center', marginBottom: 16 }}>
+              <div style={{ color: '#ABABAB', fontSize: 12 }}>Belum ada komponen. Tambah di bawah.</div>
+            </div>
+          ) : (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: muted, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, marginBottom: 8 }}>
+                Komponen per 1 {item.unit}
+              </div>
+              {entries.map(e => {
+                const tc = TYPE_COLORS[e.input_type]
+                return (
+                  <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, marginBottom: 4, backgroundColor: '#F8F8F6', border: `1px solid ${bdr}` }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 999, backgroundColor: tc.bg, color: tc.color, border: `1px solid ${tc.border}`, whiteSpace: 'nowrap' }}>
+                      {tc.label}
+                    </span>
+                    <div style={{ flex: 1 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: ink }}>{e.input_label}</span>
+                      {e.notes && <span style={{ fontSize: 11, color: muted, marginLeft: 6 }}>{e.notes}</span>}
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      {e.input_type === 'labor' ? (
+                        <span style={{ fontSize: 13, fontWeight: 600, color: '#D97706' }}>
+                          Rp {e.cost_per_output_unit.toLocaleString('id-ID')}/unit output
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: 13, fontWeight: 600, color: ink }}>
+                          {e.qty_per_output_unit} {e.unit}
+                        </span>
+                      )}
+                    </div>
+                    <button onClick={() => handleDelete(e.id)} style={{ width: 24, height: 24, borderRadius: 6, border: '1px solid #FECACA', backgroundColor: '#FEF2F2', color: '#DC2626', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Trash2 size={11} />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Add new entry */}
+          <div style={{ backgroundColor: '#F8F8F6', borderRadius: 12, padding: 16, border: `1px solid ${bdr}` }}>
+            <div style={{ fontSize: 11, color: muted, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, marginBottom: 12 }}>Tambah Komponen</div>
+
+            {/* Type selector */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+              {(['material', 'item', 'labor'] as const).map(t => {
+                const tc = TYPE_COLORS[t]
+                return (
+                  <button key={t} type="button" onClick={() => { setInputType(t); setMatId(''); setItemId(''); setInputLabel('') }}
+                    style={{ flex: 1, padding: '7px 4px', borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: 'pointer', border: `1px solid ${inputType === t ? tc.border : bdr}`, backgroundColor: inputType === t ? tc.bg : white, color: inputType === t ? tc.color : muted }}>
+                    {tc.label}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Input selector */}
+            {inputType === 'material' && (
+              <select value={inputMaterialId} onChange={e => setMatId(e.target.value)}
+                style={{ width: '100%', padding: '8px 10px', fontSize: 13, border: `1px solid ${bdr}`, borderRadius: 8, outline: 'none', color: inputMaterialId ? ink : muted, backgroundColor: white, marginBottom: 10, boxSizing: 'border-box' }}>
+                <option value="">Pilih bahan baku...</option>
+                {materials.map(m => <option key={m.id} value={m.id}>{m.name} ({m.unit})</option>)}
+              </select>
+            )}
+            {inputType === 'item' && (
+              <select value={inputItemId} onChange={e => setItemId(e.target.value)}
+                style={{ width: '100%', padding: '8px 10px', fontSize: 13, border: `1px solid ${bdr}`, borderRadius: 8, outline: 'none', color: inputItemId ? ink : muted, backgroundColor: white, marginBottom: 10, boxSizing: 'border-box' }}>
+                <option value="">Pilih produk Gading...</option>
+                {items.filter(i => i.id !== item.id).map(i => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
+              </select>
+            )}
+            {inputType === 'labor' && (
+              <input value={inputLabel} onChange={e => setInputLabel(e.target.value)} placeholder="misal: Upah marinasi, Upah bikin bumbu"
+                style={{ width: '100%', padding: '8px 10px', fontSize: 13, border: `1px solid ${bdr}`, borderRadius: 8, outline: 'none', color: ink, backgroundColor: white, marginBottom: 10, boxSizing: 'border-box' }} />
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: inputType === 'labor' ? '1fr 1fr' : '1fr 1fr 1fr', gap: 8, marginBottom: 10 }}>
+              {inputType !== 'labor' && (
+                <div>
+                  <div style={{ fontSize: 10, color: muted, fontWeight: 600, marginBottom: 4 }}>QTY per output</div>
+                  <input type="number" min="0" step="0.001" value={qty} onChange={e => setQty(e.target.value)} placeholder="0"
+                    style={{ width: '100%', padding: '7px 8px', fontSize: 13, border: `1px solid ${bdr}`, borderRadius: 8, outline: 'none', color: ink, backgroundColor: white, boxSizing: 'border-box' }} />
+                </div>
+              )}
+              <div>
+                <div style={{ fontSize: 10, color: muted, fontWeight: 600, marginBottom: 4 }}>{inputType === 'labor' ? 'Satuan Output' : 'Satuan'}</div>
+                <input value={unit} onChange={e => setUnit(e.target.value)} placeholder={inputType === 'material' ? 'kg / pcs' : inputType === 'labor' ? item.unit : 'pcs'}
+                  style={{ width: '100%', padding: '7px 8px', fontSize: 13, border: `1px solid ${bdr}`, borderRadius: 8, outline: 'none', color: ink, backgroundColor: white, boxSizing: 'border-box' }} />
+              </div>
+              {inputType === 'labor' && (
+                <>
+                  <div>
+                    <div style={{ fontSize: 10, color: muted, fontWeight: 600, marginBottom: 4 }}>Biaya per unit output (Rp)</div>
+                    <input type="number" min="0" value={costPerUnit} onChange={e => setCostPerUnit(e.target.value)} placeholder="0"
+                      style={{ width: '100%', padding: '7px 8px', fontSize: 13, border: `1px solid ${bdr}`, borderRadius: 8, outline: 'none', color: ink, backgroundColor: white, boxSizing: 'border-box' }} />
+                  </div>
+                  {/* qty masih perlu untuk labor agar bisa dihitung per kg */}
+                  <div style={{ display: 'none' }}>
+                    <input type="hidden" value={qty || '1'} onChange={e => setQty(e.target.value)} />
+                  </div>
+                </>
+              )}
+              <div>
+                <div style={{ fontSize: 10, color: muted, fontWeight: 600, marginBottom: 4 }}>Catatan</div>
+                <input value={entryNotes} onChange={e => setEntryNotes(e.target.value)} placeholder="opsional"
+                  style={{ width: '100%', padding: '7px 8px', fontSize: 13, border: `1px solid ${bdr}`, borderRadius: 8, outline: 'none', color: ink, backgroundColor: white, boxSizing: 'border-box' }} />
+              </div>
+            </div>
+
+            {error && <div style={{ padding: '6px 10px', backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 6, fontSize: 12, color: '#DC2626', marginBottom: 8 }}>{error}</div>}
+            <button onClick={handleAdd} disabled={saving}
+              style={{ width: '100%', padding: '9px', borderRadius: 10, border: 'none', backgroundColor: saving ? '#ABABAB' : ink, color: white, fontSize: 13, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer' }}>
+              {saving ? '...' : '+ Tambah Komponen'}
+            </button>
+          </div>
+        </div>
+
+        <div style={{ padding: '14px 24px', borderTop: `1px solid ${bdr}`, flexShrink: 0 }}>
+          <button onClick={onClose} style={{ width: '100%', padding: '10px', borderRadius: 10, border: `1px solid ${bdr}`, backgroundColor: white, color: muted, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Tutup</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function Gading() {
   const [tab, setTab]               = useState<Tab>('stok')
@@ -444,6 +878,21 @@ export default function Gading() {
   const [showAddItem, setShowAddItem]       = useState(false)
   const [showAddMaterial, setShowAddMaterial] = useState(false)
   const [bahanMode, setBahanMode]           = useState<'in' | 'out' | null>(null)
+  const [editingItem, setEditingItem]       = useState<Item | null>(null)
+  const [editingMaterial, setEditingMaterial] = useState<GadingMaterial | null>(null)
+  const [bomItem, setBomItem]               = useState<Item | null>(null)
+
+  async function handleDeleteItem(item: Item) {
+    if (!window.confirm(`Hapus "${item.name}" dari Stok Jadi?`)) return
+    await supabase.from('items').delete().eq('id', item.id)
+    loadData()
+  }
+
+  async function handleDeleteMaterial(m: GadingMaterial) {
+    if (!window.confirm(`Hapus "${m.name}" dari Bahan Baku?`)) return
+    await supabase.from('gading_materials').delete().eq('id', m.id)
+    loadData()
+  }
 
   const loadData = useCallback(async () => {
     setLoading(true); setError(null)
@@ -502,10 +951,13 @@ export default function Gading() {
 
   return (
     <div className="min-h-screen">
-      {showStok      && <TambahStokModal items={items} onClose={() => setShowStok(false)} onSaved={() => { setShowStok(false); loadData() }} />}
-      {showAddItem   && <TambahItemStokModal existingCategories={categories} onClose={() => setShowAddItem(false)} onSaved={() => { setShowAddItem(false); loadData() }} />}
-      {showAddMaterial && <TambahMaterialModal onClose={() => setShowAddMaterial(false)} onSaved={() => { setShowAddMaterial(false); loadData() }} />}
-      {bahanMode     && <StokBahanModal materials={materials} mode={bahanMode} onClose={() => setBahanMode(null)} onSaved={() => { setBahanMode(null); loadData() }} />}
+      {showStok        && <TambahStokModal items={items} onClose={() => setShowStok(false)} onSaved={() => { setShowStok(false); loadData() }} />}
+      {showAddItem     && <TambahItemStokModal existingCategories={categories} onClose={() => setShowAddItem(false)} onSaved={() => { setShowAddItem(false); loadData() }} />}
+      {showAddMaterial && <TambahMaterialModal existingCategories={matCategories} onClose={() => setShowAddMaterial(false)} onSaved={() => { setShowAddMaterial(false); loadData() }} />}
+      {bahanMode       && <StokBahanModal materials={materials} mode={bahanMode} onClose={() => setBahanMode(null)} onSaved={() => { setBahanMode(null); loadData() }} />}
+      {editingItem     && <EditItemModal item={editingItem} existingCategories={categories} onClose={() => setEditingItem(null)} onSaved={() => { setEditingItem(null); loadData() }} />}
+      {editingMaterial && <EditMaterialModal material={editingMaterial} existingCategories={matCategories} onClose={() => setEditingMaterial(null)} onSaved={() => { setEditingMaterial(null); loadData() }} />}
+      {bomItem         && <BomModal item={bomItem} materials={materials} items={items} onClose={() => setBomItem(null)} />}
 
       <PageHeader title="Gading — Central Kitchen" subtitle="Produksi & stok bahan baku" action={headerActions} />
 
@@ -533,8 +985,8 @@ export default function Gading() {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#F8F8F6' }}>
-                    {['Item', 'Kategori', 'Stok Gading', 'Stok BSD'].map(h => (
-                      <th key={h} style={{ padding: '9px 16px', color: muted, fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: h === 'Item' || h === 'Kategori' ? 'left' : 'right' }}>{h}</th>
+                    {['Item', 'Kategori', 'Stok Gading', 'Stok BSD', ''].map(h => (
+                      <th key={h} style={{ padding: '9px 16px', color: muted, fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: h === 'Item' || h === 'Kategori' || h === '' ? 'left' : 'right' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -559,6 +1011,13 @@ export default function Gading() {
                             </span>
                           </td>
                           <td style={{ padding: '10px 16px', textAlign: 'right', fontSize: 13, color: muted }}>{item.stock}</td>
+                          <td style={{ padding: '10px 16px' }}>
+                            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                              <button onClick={() => setBomItem(item)} title="Kelola Resep / BOM" style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid #BFDBFE', backgroundColor: '#EFF6FF', color: '#2563EB', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><BookOpen size={12} /></button>
+                              <button onClick={() => setEditingItem(item)} style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${bdr}`, backgroundColor: '#F8F8F6', color: muted, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Pencil size={12} /></button>
+                              <button onClick={() => handleDeleteItem(item)} style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid #FECACA', backgroundColor: '#FEF2F2', color: '#DC2626', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Trash2 size={12} /></button>
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </>
@@ -575,7 +1034,7 @@ export default function Gading() {
                 <Package size={36} style={{ color: '#ABABAB' }} />
                 <p style={{ color: muted, fontSize: 13 }}>Belum ada item bahan baku.</p>
                 <p style={{ color: '#ABABAB', fontSize: 12 }}>Tambah item seperti Tepung Terigu, Maizena, Trimmingan Ayam, dll.</p>
-                <button onClick={() => setShowAddMaterial(true)} style={{ backgroundColor: ink, color: white, border: 'none', borderRadius: 10, padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                <button onClick={() => setShowAddMaterial(true)} style={{ backgroundColor: ink, color: white, border: 'none', borderRadius: 10, padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer', marginTop: 8 }}>
                   + Tambah Item Bahan Baku
                 </button>
               </div>
@@ -612,6 +1071,8 @@ export default function Gading() {
                               <div className="flex gap-2 justify-end">
                                 <button onClick={() => setBahanMode('in')} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 6, border: '1px solid #BFDBFE', backgroundColor: '#EFF6FF', color: '#2563EB', cursor: 'pointer', fontWeight: 600 }}>+ Masuk</button>
                                 <button onClick={() => setBahanMode('out')} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 6, border: '1px solid #FDE68A', backgroundColor: '#FFFBEB', color: '#D97706', cursor: 'pointer', fontWeight: 600 }}>− Pakai</button>
+                                <button onClick={() => setEditingMaterial(m)} style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${bdr}`, backgroundColor: '#F8F8F6', color: muted, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Pencil size={12} /></button>
+                                <button onClick={() => handleDeleteMaterial(m)} style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid #FECACA', backgroundColor: '#FEF2F2', color: '#DC2626', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Trash2 size={12} /></button>
                               </div>
                             </td>
                           </tr>

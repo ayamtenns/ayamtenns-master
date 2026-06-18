@@ -5,10 +5,10 @@ const RECIPIENTS  = ['6285939512330', '628111779957']
 
 /**
  * Send a WhatsApp notification via Meta Cloud API.
- * Fire-and-forget — never throws, so it never blocks the main operation.
+ * Returns true if all recipients succeeded, false otherwise.
  */
-export async function notifyWA(message: string): Promise<void> {
-  await Promise.allSettled(
+export async function notifyWA(message: string): Promise<boolean> {
+  const results = await Promise.allSettled(
     RECIPIENTS.map(to =>
       fetch(`https://graph.facebook.com/v20.0/${WA_PHONE_ID}/messages`, {
         method: 'POST',
@@ -22,7 +22,11 @@ export async function notifyWA(message: string): Promise<void> {
           type: 'text',
           text: { body: message },
         }),
-      }).catch(() => {/* silent fail */})
+      }).then(r => {
+        if (!r.ok) return Promise.reject(r.status)
+        return r.json()
+      }).catch(() => Promise.reject('failed'))
     )
   )
+  return results.every(r => r.status === 'fulfilled')
 }

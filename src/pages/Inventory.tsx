@@ -5,8 +5,7 @@ import PageHeader from '../components/PageHeader'
 import { Plus, AlertTriangle, ArrowUp, ArrowDown, X, Edit2, AlertCircle, Database, Trash2 } from 'lucide-react'
 import { seedDatabase } from '../lib/seedData'
 
-const ITEM_CATEGORIES = ['Ayam', 'Bumbu', 'Sayuran', 'Minuman', 'Kemasan', 'Lainnya']
-const UNITS           = ['kg', 'gr', 'liter', 'ml', 'pcs', 'dus', 'pack']
+const UNITS = ['kg', 'gr', 'liter', 'ml', 'pcs', 'dus', 'pack', 'btl', 'jrg', 'batch']
 
 function fmt(n: number) {
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n)
@@ -15,12 +14,16 @@ function fmt(n: number) {
 const inputStyle = { backgroundColor: '#F8F8F6', border: '1px solid #E8E8E6', color: '#0E0E0E' }
 
 // ── Item Modal ────────────────────────────────────────────────────────────────
-function ItemModal({ item, onClose, onSave }: { item: Partial<Item>; onClose: () => void; onSave: () => void }) {
+function ItemModal({ item, categories: existingCats, onClose, onSave }: { item: Partial<Item>; categories: string[]; onClose: () => void; onSave: () => void }) {
   const isEdit = !!item?.id
   const [name, setName]         = useState(item?.name ?? '')
-  const [category, setCategory] = useState(item?.category ?? ITEM_CATEGORIES[0])
+  const [category, setCategory] = useState(item?.category ?? existingCats[0] ?? '')
+  const [newCat, setNewCat]     = useState('')
+  const [source, setSource]     = useState<'supplier' | 'produksi'>((item as any)?.gading_source ?? 'supplier')
   const [unit, setUnit]         = useState(item?.unit ?? UNITS[0])
+  const [newUnit, setNewUnit]   = useState('')
   const [price, setPrice]       = useState(String(item?.price_per_unit ?? ''))
+  const [costPrice, setCostPrice] = useState(String((item as any)?.cost_price ?? ''))
   const [stock, setStock]       = useState(String(item?.stock ?? '0'))
   const [minStock, setMinStock] = useState(String(item?.min_stock ?? ''))
   const [parQty, setParQty]     = useState(String(item?.par_order_qty ?? ''))
@@ -29,10 +32,13 @@ function ItemModal({ item, onClose, onSave }: { item: Partial<Item>; onClose: ()
   const [error, setError]       = useState('')
 
   async function handleSave() {
-    if (!name.trim() || !price) { setError('Nama dan harga wajib diisi.'); return }
+    const finalCat = category === '__new__' ? newCat.trim() : category
+    const isBahanBaku = finalCat === 'Bahan Baku'
+    if (!name.trim()) { setError('Nama wajib diisi.'); return }
+    if (!isBahanBaku && !price) { setError('Harga jual BSD wajib diisi.'); return }
     setSaving(true)
     try {
-      const data = { name: name.trim(), category, unit, price_per_unit: parseFloat(price), stock: parseFloat(stock) || 0, min_stock: parseFloat(minStock) || 0, par_order_qty: parseFloat(parQty) || 0, notes: notes.trim() }
+      const data = { name: name.trim(), category: finalCat, unit, gading_source: source, price_per_unit: isBahanBaku ? 0 : parseFloat(price), cost_price: parseFloat(costPrice) || 0, stock: parseFloat(stock) || 0, min_stock: parseFloat(minStock) || 0, par_order_qty: parseFloat(parQty) || 0, notes: notes.trim() }
       if (isEdit && item?.id) {
         const { error: e } = await supabase.from('items').update(data).eq('id', item.id)
         if (e) throw e
@@ -65,19 +71,52 @@ function ItemModal({ item, onClose, onSave }: { item: Partial<Item>; onClose: ()
               <label style={{ color: '#6B6B6B' }} className="block text-xs mb-1.5 uppercase tracking-wider font-medium">Kategori</label>
               <select value={category} onChange={e => setCategory(e.target.value)} style={inputStyle}
                 className="w-full px-3 py-2.5 rounded-xl text-sm outline-none focus:border-[#D91C1C] transition-colors">
-                {ITEM_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                {existingCats.map(c => <option key={c} value={c}>{c}</option>)}
+                <option value="__new__">+ Kategori baru...</option>
+              </select>
+              {category === '__new__' && (
+                <input value={newCat} onChange={e => setNewCat(e.target.value)} placeholder="Nama kategori baru"
+                  style={{ ...inputStyle, marginTop: 6 }}
+                  className="w-full px-3 py-2.5 rounded-xl text-sm outline-none focus:border-[#D91C1C] transition-colors" autoFocus />
+              )}
+            </div>
+            <div>
+              <label style={{ color: '#6B6B6B' }} className="block text-xs mb-1.5 uppercase tracking-wider font-medium">Sumber</label>
+              <select value={source} onChange={e => setSource(e.target.value as 'supplier' | 'produksi')} style={inputStyle}
+                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none focus:border-[#D91C1C] transition-colors">
+                <option value="supplier">Supplier</option>
+                <option value="produksi">Produksi Gading</option>
               </select>
             </div>
             <div>
               <label style={{ color: '#6B6B6B' }} className="block text-xs mb-1.5 uppercase tracking-wider font-medium">Satuan</label>
-              <select value={unit} onChange={e => setUnit(e.target.value)} style={inputStyle}
+              <select value={unit} onChange={e => { if (e.target.value === '__new__') { setNewUnit(''); setUnit('__new__') } else setUnit(e.target.value) }} style={inputStyle}
                 className="w-full px-3 py-2.5 rounded-xl text-sm outline-none focus:border-[#D91C1C] transition-colors">
                 {UNITS.map(u => <option key={u}>{u}</option>)}
+                {!UNITS.includes(unit) && unit !== '__new__' && <option value={unit}>{unit}</option>}
+                <option value="__new__">+ Satuan baru...</option>
               </select>
+              {unit === '__new__' && (
+                <input autoFocus value={newUnit} onChange={e => setNewUnit(e.target.value)}
+                  onBlur={() => { if (newUnit.trim()) setUnit(newUnit.trim()); else setUnit(UNITS[0]) }}
+                  onKeyDown={e => { if (e.key === 'Enter' && newUnit.trim()) setUnit(newUnit.trim()) }}
+                  placeholder="Tulis satuan baru..." style={{ ...inputStyle, marginTop: 6, display: 'block', width: '100%', boxSizing: 'border-box' }}
+                  className="w-full px-3 py-2.5 rounded-xl text-sm outline-none focus:border-[#D91C1C] transition-colors" />
+              )}
             </div>
+            {category !== 'Bahan Baku' && (
+              <div>
+                <label style={{ color: '#6B6B6B' }} className="block text-xs mb-1.5 uppercase tracking-wider font-medium">Harga Jual BSD (Rp) *</label>
+                <input type="number" value={price} onChange={e => setPrice(e.target.value)} min="0" style={inputStyle}
+                  className="w-full px-3 py-2.5 rounded-xl text-sm outline-none focus:border-[#D91C1C] transition-colors" />
+              </div>
+            )}
             <div>
-              <label style={{ color: '#6B6B6B' }} className="block text-xs mb-1.5 uppercase tracking-wider font-medium">Harga/Unit (Rp) *</label>
-              <input type="number" value={price} onChange={e => setPrice(e.target.value)} min="0" style={inputStyle}
+              <label style={{ color: '#6B6B6B' }} className="block text-xs mb-1.5 uppercase tracking-wider font-medium">
+                {category === 'Bahan Baku' ? 'Harga Beli/gr (Rp)' : 'Harga Modal/Unit (Rp)'}
+              </label>
+              <input type="number" value={costPrice} onChange={e => setCostPrice(e.target.value)} min="0" step="0.01" style={inputStyle}
+                placeholder="opsional, isi manual"
                 className="w-full px-3 py-2.5 rounded-xl text-sm outline-none focus:border-[#D91C1C] transition-colors" />
             </div>
             <div>
@@ -201,6 +240,7 @@ function StatCard({ label, value, color }: { label: string; value: string | numb
 export default function Inventory() {
   const [items, setItems]           = useState<Item[]>([])
   const [transactions, setTx]       = useState<Transaction[]>([])
+  const [avgBuyPrice, setAvgBuyPrice] = useState<Record<string, number>>({})
   const [loading, setLoading]       = useState(true)
   const [error, setError]           = useState<string | null>(null)
   const [seeding, setSeeding]       = useState(false)
@@ -210,21 +250,33 @@ export default function Inventory() {
   const [activeTab, setActiveTab]   = useState<'items' | 'history'>('items')
   const [search, setSearch]         = useState('')
   const [selected, setSelected]     = useState<Set<string>>(new Set())
-  const [filterCat, setFilterCat]   = useState('Semua')
+  const [filterCat, setFilterCat]     = useState('Semua')
+  const [filterSource, setFilterSource] = useState<'Semua' | 'supplier' | 'produksi'>('Semua')
   const [filterStock, setFilterStock] = useState<'Semua' | 'Kritis' | 'Habis'>('Semua')
 
   const loadData = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const [{ data: itemsData, error: e1 }, { data: txData, error: e2 }] = await Promise.all([
+      const [{ data: itemsData, error: e1 }, { data: txData, error: e2 }, { data: purchaseData }] = await Promise.all([
         supabase.from('items').select('*').order('name'),
         supabase.from('transactions').select('*, item:items(name,unit)').order('created_at', { ascending: false }).limit(100),
+        supabase.from('transactions').select('item_id, quantity, unit_price').eq('type', 'in').gt('unit_price', 0),
       ])
       if (e1) throw e1
       if (e2) throw e2
       setItems(itemsData ?? [])
       setTx((txData ?? []) as Transaction[])
+      // Weighted avg buy price per item
+      const buyMap: Record<string, { spend: number; qty: number }> = {}
+      for (const p of (purchaseData ?? []) as { item_id: string; quantity: number; unit_price: number }[]) {
+        if (!buyMap[p.item_id]) buyMap[p.item_id] = { spend: 0, qty: 0 }
+        buyMap[p.item_id].spend += p.quantity * p.unit_price
+        buyMap[p.item_id].qty   += p.quantity
+      }
+      const avg: Record<string, number> = {}
+      for (const [id, v] of Object.entries(buyMap)) avg[id] = v.qty > 0 ? v.spend / v.qty : 0
+      setAvgBuyPrice(avg)
     } catch (e: any) {
       setError(e.message ?? 'Gagal memuat data.')
     } finally {
@@ -280,7 +332,8 @@ export default function Inventory() {
   const lowStock   = items.filter(i => i.stock <= i.min_stock && i.min_stock > 0)
   const categories = ['Semua', ...Array.from(new Set(items.map(i => i.category))).sort()]
   const filtered   = items
-    .filter(i => filterCat === 'Semua'   || i.category === filterCat)
+    .filter(i => filterCat === 'Semua' || i.category === filterCat)
+    .filter(i => filterSource === 'Semua' || (i as any).gading_source === filterSource)
     .filter(i => {
       if (filterStock === 'Kritis') return i.stock <= i.min_stock && i.min_stock > 0
       if (filterStock === 'Habis')  return i.stock === 0
@@ -384,6 +437,29 @@ export default function Inventory() {
               {/* Divider */}
               <div style={{ width: 1, height: 20, backgroundColor: '#E8E8E6' }} />
 
+              {/* Source pills */}
+              <div className="flex gap-1.5">
+                {([['Semua', 'Semua'], ['supplier', '📦 Supplier'], ['produksi', '🏭 Produksi']] as const).map(([val, label]) => (
+                  <button key={val} onClick={() => { setFilterSource(val); setSelected(new Set()) }}
+                    style={{
+                      backgroundColor: filterSource === val ? '#0E0E0E' : '#F2F2F0',
+                      color:           filterSource === val ? '#FFFFFF'  : '#6B6B6B',
+                      border:          '1px solid ' + (filterSource === val ? '#0E0E0E' : '#E8E8E6'),
+                    }}
+                    className="px-3 py-1 rounded-full text-xs font-medium transition-colors whitespace-nowrap">
+                    {label}
+                    {val !== 'Semua' && (
+                      <span style={{ opacity: 0.6 }} className="ml-1">
+                        {items.filter(i => (i as any).gading_source === val).length}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              {/* Divider */}
+              <div style={{ width: 1, height: 20, backgroundColor: '#E8E8E6' }} />
+
               {/* Stock status pills */}
               <div className="flex gap-1.5">
                 {(['Semua', 'Kritis', 'Habis'] as const).map(s => {
@@ -459,7 +535,8 @@ export default function Inventory() {
               </div>
             ) : (
               <div style={{ border: '1px solid #E8E8E6', borderRadius: 16, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
-                <table className="w-full">
+                <div style={{ overflowX: 'auto' }}>
+                <table className="w-full" style={{ minWidth: 900 }}>
                   <thead>
                     <tr style={{ backgroundColor: '#F8F8F6', borderBottom: '1px solid #E8E8E6' }}>
                       <th className="px-4 py-3 w-8">
@@ -468,9 +545,9 @@ export default function Inventory() {
                           onChange={toggleSelectAll}
                           className="cursor-pointer accent-[#D91C1C]" />
                       </th>
-                      {['Nama', 'Kategori', 'Satuan', 'Harga/Unit', 'Stok', 'Min / Par', 'Nilai Stok', ''].map(h => (
+                      {['Nama', 'Kategori', 'Satuan', 'Harga Beli', 'Harga Jual BSD', 'Margin', 'Stok BSD', 'Stok Gading', 'Stok Produksi', 'Min / Par', 'Nilai Stok', ''].map(h => (
                         <th key={h} style={{ color: '#6B6B6B' }}
-                          className={`px-4 py-3 text-xs font-medium uppercase tracking-wider ${['Harga/Unit', 'Stok', 'Nilai Stok'].includes(h) ? 'text-right' : 'text-left'}`}>
+                          className={`px-4 py-3 text-xs font-medium uppercase tracking-wider ${['Harga Beli', 'Harga Jual BSD', 'Margin', 'Stok BSD', 'Stok Gading', 'Stok Produksi', 'Nilai Stok'].includes(h) ? 'text-right' : 'text-left'}`}>
                           {h}
                         </th>
                       ))}
@@ -501,16 +578,66 @@ export default function Inventory() {
                             </div>
                           </td>
                           <td className="px-4 py-3">
-                            <span style={{ backgroundColor: '#F2F2F0', color: '#6B6B6B', border: '1px solid #E8E8E6' }} className="text-xs px-2.5 py-1 rounded-full font-medium">
-                              {item.category}
-                            </span>
+                            <div className="flex flex-col gap-1">
+                              <span style={{ backgroundColor: '#F2F2F0', color: '#6B6B6B', border: '1px solid #E8E8E6' }} className="text-xs px-2.5 py-1 rounded-full font-medium w-fit">
+                                {item.category}
+                              </span>
+                              {(item as any).gading_source && (
+                                <span style={{
+                                  backgroundColor: (item as any).gading_source === 'produksi' ? '#EFF6FF' : '#F0FDF4',
+                                  color: (item as any).gading_source === 'produksi' ? '#2563EB' : '#16A34A',
+                                  border: `1px solid ${(item as any).gading_source === 'produksi' ? '#BFDBFE' : '#BBF7D0'}`,
+                                }} className="text-xs px-2.5 py-1 rounded-full font-medium w-fit">
+                                  {(item as any).gading_source === 'produksi' ? '🏭 Produksi' : '📦 Supplier'}
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-4 py-3" style={{ color: '#6B6B6B' }}><span className="text-sm">{item.unit}</span></td>
-                          <td className="px-4 py-3 text-right" style={{ color: '#D97706' }}><span className="text-sm font-medium">{fmt(item.price_per_unit)}</span></td>
+                          <td className="px-4 py-3 text-right">
+                            {(() => {
+                              const cp = (item as any).cost_price
+                              if (cp > 0) return <span className="text-sm font-medium" style={{ color: '#0E0E0E' }}>{fmt(cp)}</span>
+                              if (avgBuyPrice[item.id]) return <span className="text-sm" style={{ color: '#ABABAB' }}>{fmt(avgBuyPrice[item.id])} <span style={{ fontSize: 10 }}>avg</span></span>
+                              return <span className="text-sm" style={{ color: '#ABABAB' }}>—</span>
+                            })()}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            {item.category === 'Bahan Baku'
+                              ? <span className="text-sm" style={{ color: '#ABABAB' }}>—</span>
+                              : <span className="text-sm font-medium" style={{ color: '#D97706' }}>{fmt(item.price_per_unit)}</span>
+                            }
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            {(() => {
+                              const modal = (item as any).cost_price > 0 ? (item as any).cost_price : avgBuyPrice[item.id]
+                              const jual = item.price_per_unit
+                              if (!modal || !jual || item.category === 'Bahan Baku') return <span className="text-sm" style={{ color: '#ABABAB' }}>—</span>
+                              const margin = ((jual - modal) / modal) * 100
+                              const positive = margin >= 0
+                              return (
+                                <span style={{ backgroundColor: positive ? '#F0FDF4' : '#FEF2F2', color: positive ? '#16A34A' : '#DC2626', border: `1px solid ${positive ? '#BBF7D0' : '#FECACA'}`, borderRadius: 999, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>
+                                  {positive ? '+' : ''}{margin.toFixed(1)}%
+                                </span>
+                              )
+                            })()}
+                          </td>
                           <td className="px-4 py-3 text-right">
                             <span style={{ color: isLow ? '#DC2626' : '#0E0E0E' }} className="text-sm font-semibold">
                               {item.stock} {item.unit}
                             </span>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            {item.stock_gading > 0
+                              ? <span className="text-sm font-semibold" style={{ color: '#16A34A' }}>{item.stock_gading} {item.unit}</span>
+                              : <span className="text-sm" style={{ color: '#ABABAB' }}>—</span>
+                            }
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            {item.stock_produksi > 0
+                              ? <span className="text-sm font-semibold" style={{ color: '#D97706' }}>{item.stock_produksi} {item.unit}</span>
+                              : <span className="text-sm" style={{ color: '#ABABAB' }}>—</span>
+                            }
                           </td>
                           <td className="px-4 py-3 text-right">
                             <span className="text-sm" style={{ color: '#ABABAB' }}>{item.min_stock}</span>
@@ -537,7 +664,7 @@ export default function Inventory() {
                       )
                     })}
                     {filtered.length === 0 && items.length > 0 && (
-                      <tr><td colSpan={9} className="px-4 py-12 text-center" style={{ color: '#ABABAB' }}>
+                      <tr><td colSpan={11} className="px-4 py-12 text-center" style={{ color: '#ABABAB' }}>
                         Tidak ada barang yang cocok.{' '}
                         {(filterCat !== 'Semua' || filterStock !== 'Semua') && (
                           <button onClick={() => { setFilterCat('Semua'); setFilterStock('Semua') }}
@@ -547,6 +674,7 @@ export default function Inventory() {
                     )}
                   </tbody>
                 </table>
+                </div>
               </div>
             )}
           </>
@@ -590,7 +718,7 @@ export default function Inventory() {
         )}
       </div>
 
-      {itemModal && <ItemModal item={itemModal === 'add' ? {} : itemModal} onClose={() => setItemModal(null)} onSave={() => { setItemModal(null); loadData() }} />}
+      {itemModal && <ItemModal item={itemModal === 'add' ? {} : itemModal} categories={Array.from(new Set(items.map(i => i.category))).sort()} onClose={() => setItemModal(null)} onSave={() => { setItemModal(null); loadData() }} />}
       {txModal   && <TxModal item={txModal.item} type={txModal.type} onClose={() => setTxModal(null)} onSave={() => { setTxModal(null); loadData() }} />}
     </div>
   )

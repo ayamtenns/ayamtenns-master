@@ -20,6 +20,7 @@ export default function RequestForm() {
   const [items, setItems]       = useState<Item[]>([])
   const [qtys, setQtys]         = useState<QtyMap>({})
   const [name, setName]         = useState('')
+  const [requestDate, setRequestDate] = useState(new Date().toISOString().slice(0, 10))
   const [notes, setNotes]       = useState('')
   const [loading, setLoading]   = useState(true)
   const [submitting, setSub]    = useState(false)
@@ -27,7 +28,7 @@ export default function RequestForm() {
   const [error, setError]       = useState('')
 
   useEffect(() => {
-    supabase.from('items').select('*').order('category').order('name')
+    supabase.from('items').select('*').neq('category', 'Bahan Baku').order('category').order('name')
       .then(({ data }) => { setItems(data ?? []); setLoading(false) })
   }, [])
 
@@ -47,7 +48,7 @@ export default function RequestForm() {
     try {
       const { data: req, error: e1 } = await supabase
         .from('transfer_requests')
-        .insert({ requested_by: name.trim(), notes: notes.trim(), request_date: new Date().toISOString().split('T')[0] })
+        .insert({ requested_by: name.trim(), notes: notes.trim(), request_date: requestDate })
         .select('id').single()
       if (e1) throw e1
 
@@ -65,7 +66,7 @@ export default function RequestForm() {
         .map(i => `• ${i.name}: ${qtys[i.id]} ${i.unit}`)
         .join('\n')
       notifyWA(
-        `📦 *Permintaan Barang Baru*\n\nDari: ${name.trim()}\nTanggal: ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long' })}\n\n${itemLines}${notes.trim() ? `\n\nCatatan: ${notes.trim()}` : ''}\n\n_Cek & approve di sistem AYAMTENNS._`
+        `📦 *Permintaan Barang Baru*\n\nDari: ${name.trim()}\nUntuk tanggal: ${new Date(requestDate + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}\n\n${itemLines}${notes.trim() ? `\n\nCatatan: ${notes.trim()}` : ''}\n\n_Cek & approve di sistem AYAMTENNS._`
       )
 
       setDone(true)
@@ -88,7 +89,7 @@ export default function RequestForm() {
           <p style={{ color: muted, fontSize: 14, lineHeight: 1.6 }}>
             Permintaan barang sudah dikirim ke supervisor.<br />Barang akan disiapkan secepatnya.
           </p>
-          <button onClick={() => { setDone(false); setQtys({}); setName(''); setNotes('') }}
+          <button onClick={() => { setDone(false); setQtys({}); setName(''); setNotes(''); setRequestDate(new Date().toISOString().slice(0, 10)) }}
             style={{ marginTop: 24, backgroundColor: red, color: white, border: 'none', borderRadius: 12, padding: '12px 24px', fontSize: 14, fontWeight: 600, cursor: 'pointer', width: '100%' }}>
             Buat Request Baru
           </button>
@@ -119,6 +120,19 @@ export default function RequestForm() {
           <input
             value={name} onChange={e => setName(e.target.value)}
             placeholder="contoh: Budi"
+            style={{ display: 'block', width: '100%', marginTop: 8, padding: '10px 0', fontSize: 16, border: 'none', outline: 'none', backgroundColor: 'transparent', color: ink, borderBottom: `2px solid ${bdr}`, boxSizing: 'border-box' }}
+          />
+        </div>
+
+        {/* Tanggal Request */}
+        <div style={{ backgroundColor: white, borderRadius: 12, padding: 16, marginBottom: 12, border: `1px solid ${bdr}` }}>
+          <label style={{ color: muted, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
+            Barang Dibutuhkan Tanggal *
+          </label>
+          <input
+            type="date"
+            value={requestDate}
+            onChange={e => setRequestDate(e.target.value)}
             style={{ display: 'block', width: '100%', marginTop: 8, padding: '10px 0', fontSize: 16, border: 'none', outline: 'none', backgroundColor: 'transparent', color: ink, borderBottom: `2px solid ${bdr}`, boxSizing: 'border-box' }}
           />
         </div>

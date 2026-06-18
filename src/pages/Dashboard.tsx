@@ -46,6 +46,11 @@ export default function Dashboard() {
   const [activeTransfers, setActiveTransfers] = useState<TransferRequest[]>([])
   const [lastProductions, setLastProductions] = useState<GadingProduction[]>([])
   const [gadingTopStock, setGadingTopStock] = useState<Item[]>([])
+  const [cogsData, setCogsData] = useState<{
+    name: string; unit: string; totalSpend: number; totalQty: number;
+    avgCogs: number; sellPrice: number; margin: number
+  }[]>([])
+  const [totalPurchaseMonth, setTotalPurchaseMonth] = useState(0)
 
   useEffect(() => {
     async function load() {
@@ -58,6 +63,7 @@ export default function Dashboard() {
         { data: menus },
         { data: transfers },
         { data: productions },
+        { data: purchases },
       ] = await Promise.all([
         supabase.from('sales').select('total_price, date').gte('date', `${month}-01`),
         supabase.from('expenses').select('amount').gte('date', `${month}-01`),
@@ -72,6 +78,11 @@ export default function Dashboard() {
           .select('*, items:gading_production_items(*, item:items(name, unit, category))')
           .order('date', { ascending: false })
           .limit(5),
+        supabase.from('transactions')
+          .select('item_id, quantity, unit_price, item:items(name, unit, price_per_unit)')
+          .eq('type', 'in')
+          .gt('unit_price', 0)
+          .gte('date', `${month}-01`),
       ])
 
       const revenue  = (sales ?? []).reduce((s, r) => s + r.total_price, 0)
@@ -93,6 +104,24 @@ export default function Dashboard() {
         .filter(i => i.stock_gading > 0)
         .sort((a, b) => b.stock_gading - a.stock_gading)
         .slice(0, 6)
+
+      // COGS: weighted average per item
+      const purchaseList = (purchases ?? []) as unknown as { item_id: string; quantity: number; unit_price: number; item?: { name: string; unit: string; price_per_unit: number } }[]
+      const cogsMap: Record<string, { name: string; unit: string; totalSpend: number; totalQty: number; sellPrice: number }> = {}
+      for (const p of purchaseList) {
+        if (!p.item) continue
+        if (!cogsMap[p.item_id]) cogsMap[p.item_id] = { name: p.item.name, unit: p.item.unit, totalSpend: 0, totalQty: 0, sellPrice: p.item.price_per_unit }
+        cogsMap[p.item_id].totalSpend += p.quantity * p.unit_price
+        cogsMap[p.item_id].totalQty  += p.quantity
+      }
+      const cogsRows = Object.values(cogsMap).map(c => {
+        const avgCogs = c.totalQty > 0 ? c.totalSpend / c.totalQty : 0
+        const margin  = avgCogs > 0 ? ((c.sellPrice - avgCogs) / avgCogs) * 100 : 0
+        return { ...c, avgCogs, margin }
+      }).sort((a, b) => b.totalSpend - a.totalSpend)
+
+      setCogsData(cogsRows)
+      setTotalPurchaseMonth(purchaseList.reduce((s, p) => s + p.quantity * p.unit_price, 0))
 
       const allTransfers = (transfers ?? []) as TransferRequest[]
       setPendingTransfers(allTransfers.filter(t => t.status === 'pending'))
@@ -370,6 +399,76 @@ export default function Dashboard() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* ── Row 4: COGS Tracker ── */}
+        <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E8E8E6' }} className="rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 style={{ fontFamily: "'Archivo Black', sans-serif", color: '#0E0E0E', fontSize: 13 }} className="uppercase tracking-wide">
+                COGS & Margin Bahan Baku
+              </h3>
+              <p style={{ color: '#9B9B9B' }} className="text-xs mt-0.5">
+                Harga beli aktual bulan ini vs harga jual ke BSD
+              </p>
+            </div>
+            <div className="text-right">
+              <div style={{ color: '#9B9B9B' }} className="text-xs">Total Belanja Bahan</div>
+              <div style={{ color: '#DC2626', fontFamily: "'Archivo Black', sans-serif" }} className="text-lg">{fmt(totalPurchaseMonth)}</div>
+            </div>
+          </div>
+
+          {cogsData.length === 0 ? (
+            <div style={{ backgroundColor: '#F8F8F6', borderRadius: 12 }} className="py-10 text-center">
+              <div style={{ color: '#ABABAB' }} className="text-3xl mb-2">📊</div>
+              <p style={{ color: '#6B6B6B' }} className="text-sm font-medium">Belum ada data COGS bulan ini</p>
+              <p style={{ color: '#ABABAB' }} className="text-xs mt-1">
+                Catat pembelian bahan baku di halaman Purchasing dengan harga beli aktual
+              </p>
+              <button onClick={() => navigate('/purchasing')} style={{ backgroundColor: '#0E0E0E', color: '#FFFFFF', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 12, fontWeight: 600, cursor: 'pointer', marginTop: 12 }}>
+                → Buka Purchasing
+              </button>
+            </div>
+          ) : (
+            <div style={{ border: '1px solid #E8E8E6', borderRadius: 12, overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#F8F8F6' }}>
+                    {['Bahan Baku', 'Total Beli', 'Qty', 'COGS Rata-rata', 'Harga Jual BSD', 'Margin'].map(h => (
+                      <th key={h} style={{ padding: '8px 14px', color: '#6B6B6B', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: h === 'Bahan Baku' ? 'left' : 'right' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {cogsData.map((c, i) => {
+                    const profit = c.margin > 0
+                    return (
+                      <tr key={i} style={{ borderTop: '1px solid #F0F0EE' }}>
+                        <td style={{ padding: '10px 14px', fontSize: 13, fontWeight: 600, color: '#0E0E0E' }}>
+                          {c.name}
+                          <span style={{ color: '#ABABAB', fontWeight: 400, marginLeft: 4, fontSize: 11 }}>{c.unit}</span>
+                        </td>
+                        <td style={{ padding: '10px 14px', textAlign: 'right', fontSize: 12, color: '#DC2626', fontWeight: 600 }}>{fmt(c.totalSpend)}</td>
+                        <td style={{ padding: '10px 14px', textAlign: 'right', fontSize: 12, color: '#6B6B6B' }}>{c.totalQty.toFixed(1)}</td>
+                        <td style={{ padding: '10px 14px', textAlign: 'right', fontSize: 13, fontWeight: 700, color: '#D97706' }}>{fmt(c.avgCogs)}</td>
+                        <td style={{ padding: '10px 14px', textAlign: 'right', fontSize: 13, color: '#6B6B6B' }}>{fmt(c.sellPrice)}</td>
+                        <td style={{ padding: '10px 14px', textAlign: 'right' }}>
+                          <span style={{
+                            backgroundColor: profit ? '#F0FDF4' : '#FEF2F2',
+                            color: profit ? '#16A34A' : '#DC2626',
+                            border: `1px solid ${profit ? '#BBF7D0' : '#FECACA'}`,
+                            borderRadius: 999, padding: '2px 10px', fontSize: 12, fontWeight: 700,
+                          }}>
+                            {profit ? '+' : ''}{c.margin.toFixed(1)}%
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
       </div>
