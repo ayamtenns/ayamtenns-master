@@ -160,7 +160,7 @@ export default function Produksi() {
         const q = parseQty(distQty[item.item_id] || '0')
         if (!q || q <= 0) continue
         if (!isBackdate && q > item.stock_produksi) {
-          setError(`Stok produksi ${item.item_name} tidak cukup (tersedia: ${item.stock_produksi} ${item.unit})`)
+          setError(`Stok produksi ${item.item_name} tidak cukup (tersedia: ${Math.round(item.stock_produksi * 1000) / 1000} ${item.unit})`)
           setSubmitting(false)
           return
         }
@@ -368,7 +368,7 @@ export default function Produksi() {
                     <div style={{ fontWeight: 700, fontSize: 16, color: ink }}>{item.item_name}</div>
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontSize: 12, color: muted }}>Tersedia</div>
-                      <div style={{ fontWeight: 700, color: amber }}>{item.stock_produksi} {item.unit}</div>
+                      <div style={{ fontWeight: 700, color: amber }}>{Math.round(item.stock_produksi * 1000) / 1000} {item.unit}</div>
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
