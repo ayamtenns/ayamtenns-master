@@ -202,7 +202,7 @@ export default function Produksi() {
   )
 
   const isBackdateMode = distDate < new Date().toISOString().slice(0, 10)
-  const distributableItems = isBackdateMode ? items : items.filter(i => i.stock_produksi > 0)
+  const distributableItems = isBackdateMode ? items : items.filter(i => parseFloat(i.stock_produksi.toFixed(2)) > 0)
 
   return (
     <div style={{ minHeight: '100vh', background: bg, fontFamily: 'system-ui, sans-serif', maxWidth: 480, margin: '0 auto' }}>
