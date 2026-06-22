@@ -100,6 +100,7 @@ export default function Produksi() {
   }
 
   async function submitProduksi() {
+    if (!staffName.trim()) { setError('Nama staff wajib diisi.'); return }
     if (!hasInput(qty)) { setError('Isi minimal 1 jumlah produksi.'); return }
     setSubmitting(true); setError('')
     try {

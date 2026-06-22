@@ -20,7 +20,7 @@ export default function RequestForm() {
   const [items, setItems]       = useState<Item[]>([])
   const [qtys, setQtys]         = useState<QtyMap>({})
   const [name, setName]         = useState('')
-  const [requestDate, setRequestDate] = useState(new Date().toISOString().slice(0, 10))
+  const [requestDate, setRequestDate] = useState('')
   const [notes, setNotes]       = useState('')
   const [loading, setLoading]   = useState(true)
   const [submitting, setSub]    = useState(false)
@@ -41,6 +41,7 @@ export default function RequestForm() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim()) { setError('Nama wajib diisi.'); return }
+    if (!requestDate) { setError('Tanggal wajib diisi.'); return }
     const requested = items.filter(i => parseFloat(qtys[i.id] || '0') > 0)
     if (requested.length === 0) { setError('Pilih minimal 1 barang.'); return }
 
@@ -89,7 +90,7 @@ export default function RequestForm() {
           <p style={{ color: muted, fontSize: 14, lineHeight: 1.6 }}>
             Permintaan barang sudah dikirim ke supervisor.<br />Barang akan disiapkan secepatnya.
           </p>
-          <button onClick={() => { setDone(false); setQtys({}); setName(''); setNotes(''); setRequestDate(new Date().toISOString().slice(0, 10)) }}
+          <button onClick={() => { setDone(false); setQtys({}); setName(''); setNotes(''); setRequestDate('') }}
             style={{ marginTop: 24, backgroundColor: red, color: white, border: 'none', borderRadius: 12, padding: '12px 24px', fontSize: 14, fontWeight: 600, cursor: 'pointer', width: '100%' }}>
             Buat Request Baru
           </button>
