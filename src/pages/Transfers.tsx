@@ -851,6 +851,7 @@ export default function Transfers() {
                     {rekapPivot.items.map((item, idx) => {
                       const prevCat = idx > 0 ? rekapPivot.items[idx - 1].category : null
                       const rowTotal = rekapPivot.dates.reduce((s, d) => s + (rekapPivot.cell[item.item_id]?.[d] ?? 0), 0)
+                      const rowNilai = rowTotal * (item as any).price
                       return (
                         <>
                           {item.category !== prevCat && (
@@ -876,7 +877,8 @@ export default function Transfers() {
                               )
                             })}
                             <td style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 700, color: '#0E0E0E', whiteSpace: 'nowrap', borderLeft: '2px solid #E8E8E6', backgroundColor: '#FAFAFA' }}>
-                              {new Intl.NumberFormat('id-ID').format(rowTotal)} {item.unit}
+                              <div>{new Intl.NumberFormat('id-ID').format(rowTotal)} {item.unit}</div>
+                              {rowNilai > 0 && <div style={{ fontSize: 11, fontWeight: 600, color: '#92400E', marginTop: 2 }}>{fmt(rowNilai)}</div>}
                             </td>
                           </tr>
                         </>
