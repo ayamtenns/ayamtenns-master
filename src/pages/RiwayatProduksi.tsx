@@ -21,6 +21,7 @@ interface ProdLog {
   produced_at: string
   photo_url: string | null
   photo_url_2: string | null
+  staff_name: string | null
   item: { id: string; name: string; unit: string; cost_price: number } | null
 }
 
@@ -54,6 +55,15 @@ export default function RiwayatProduksi() {
   const [tab, setTab] = useState<'produksi' | 'distribusi'>('produksi')
   const [loading, setLoading] = useState(false)
 
+  // Edit log state
+  const [editingLog, setEditingLog]   = useState<ProdLog | null>(null)
+  const [editQty,    setEditQty]      = useState('')
+  const [editDate,   setEditDate]     = useState('')
+  const [editNotes,  setEditNotes]    = useState('')
+  const [editStaff,  setEditStaff]    = useState('')
+  const [editSaving, setEditSaving]   = useState(false)
+  const [editError,  setEditError]    = useState('')
+
   // Cleanup state
   const [showCleanup, setShowCleanup]     = useState(false)
   const [cleanBefore, setCleanBefore]     = useState('')   // 'YYYY-MM' cutoff
@@ -72,7 +82,7 @@ export default function RiwayatProduksi() {
     const [pRes, dRes] = await Promise.all([
       supabase
         .from('production_logs')
-        .select('id, quantity, notes, produced_at, photo_url, photo_url_2, item:item_id(id, name, unit, cost_price)')
+        .select('id, quantity, notes, produced_at, photo_url, photo_url_2, staff_name, item:item_id(id, name, unit, cost_price)')
         .gte('produced_at', from)
         .lte('produced_at', to)
         .order('produced_at', { ascending: false }),
@@ -139,6 +149,41 @@ export default function RiwayatProduksi() {
 
     await supabase.from(table).delete().eq('id', id)
     load()
+  }
+
+  function openEdit(row: ProdLog) {
+    setEditingLog(row)
+    setEditQty(String(row.quantity))
+    setEditDate(row.produced_at)
+    setEditNotes(row.notes ?? '')
+    setEditStaff(row.staff_name ?? '')
+    setEditError('')
+  }
+
+  async function saveEdit() {
+    if (!editingLog) return
+    const newQty = parseFloat(editQty)
+    if (!editQty || isNaN(newQty) || newQty <= 0) { setEditError('Jumlah harus lebih dari 0.'); return }
+    if (!editDate) { setEditError('Tanggal wajib diisi.'); return }
+    setEditSaving(true); setEditError('')
+    try {
+      const delta = newQty - editingLog.quantity
+      if (delta !== 0 && editingLog.item) {
+        const { data: cur } = await supabase.from('items').select('stock_produksi').eq('id', editingLog.item.id).single()
+        if (cur) await supabase.from('items').update({ stock_produksi: Math.max(0, (cur.stock_produksi ?? 0) + delta) }).eq('id', editingLog.item.id)
+      }
+      await supabase.from('production_logs').update({
+        quantity: newQty,
+        produced_at: editDate,
+        notes: editNotes.trim() || null,
+        staff_name: editStaff.trim() || null,
+      }).eq('id', editingLog.id)
+      setEditingLog(null)
+      load()
+    } catch (e: any) {
+      setEditError(e.message ?? 'Gagal menyimpan.')
+    }
+    setEditSaving(false)
   }
 
   async function previewCleanup() {
@@ -263,6 +308,41 @@ export default function RiwayatProduksi() {
                     {cleanLoading ? 'Menghapus...' : `Hapus ${cleanPreview.length} Entri`}
                   </button>
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Log Modal */}
+      {editingLog && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ backgroundColor: '#FFFFFF', borderRadius: 16, width: '100%', maxWidth: 440, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+            <div style={{ padding: '18px 24px', borderBottom: '1px solid #E8E8E6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontFamily: "'Archivo Black', sans-serif", fontSize: 15, color: '#0E0E0E' }}>Edit Log Produksi</div>
+                <div style={{ fontSize: 12, color: '#6B6B6B', marginTop: 2 }}>{editingLog.item?.name}</div>
+              </div>
+              <button onClick={() => setEditingLog(null)} style={{ background: '#F2F2F0', border: 'none', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', fontSize: 16 }}>×</button>
+            </div>
+            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {[
+                { label: 'Tanggal', content: <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} style={{ width: '100%', padding: '8px 10px', fontSize: 14, fontWeight: 600, border: '1px solid #E8E8E6', borderRadius: 8, outline: 'none', color: '#0E0E0E', backgroundColor: '#F8F8F6', boxSizing: 'border-box' as const }} /> },
+                { label: `Jumlah (${editingLog.item?.unit})`, content: <input type="number" min="0.1" step="0.1" value={editQty} onChange={e => setEditQty(e.target.value)} style={{ width: '100%', padding: '8px 10px', fontSize: 14, fontWeight: 600, border: '1px solid #E8E8E6', borderRadius: 8, outline: 'none', color: '#7C3AED', backgroundColor: '#F8F8F6', boxSizing: 'border-box' as const }} /> },
+                { label: 'Nama Staff', content: <input type="text" value={editStaff} onChange={e => setEditStaff(e.target.value)} placeholder="Nama staff..." style={{ width: '100%', padding: '8px 10px', fontSize: 14, border: '1px solid #E8E8E6', borderRadius: 8, outline: 'none', color: '#0E0E0E', backgroundColor: '#F8F8F6', boxSizing: 'border-box' as const }} /> },
+                { label: 'Catatan', content: <input type="text" value={editNotes} onChange={e => setEditNotes(e.target.value)} placeholder="Opsional..." style={{ width: '100%', padding: '8px 10px', fontSize: 14, border: '1px solid #E8E8E6', borderRadius: 8, outline: 'none', color: '#0E0E0E', backgroundColor: '#F8F8F6', boxSizing: 'border-box' as const }} /> },
+              ].map(({ label, content }) => (
+                <div key={label}>
+                  <label style={{ fontSize: 11, color: '#6B6B6B', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>{label}</label>
+                  {content}
+                </div>
+              ))}
+              {editError && <div style={{ fontSize: 13, color: '#DC2626', backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '8px 12px' }}>{editError}</div>}
+              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+                <button onClick={() => setEditingLog(null)} style={{ flex: 1, padding: '10px', borderRadius: 10, border: '1px solid #E8E8E6', backgroundColor: '#FFFFFF', color: '#6B6B6B', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Batal</button>
+                <button onClick={saveEdit} disabled={editSaving} style={{ flex: 2, padding: '10px', borderRadius: 10, border: 'none', backgroundColor: editSaving ? '#ABABAB' : '#7C3AED', color: '#FFFFFF', fontSize: 13, fontWeight: 700, cursor: editSaving ? 'not-allowed' : 'pointer' }}>
+                  {editSaving ? 'Menyimpan...' : 'Simpan'}
+                </button>
               </div>
             </div>
           </div>
@@ -415,7 +495,7 @@ export default function RiwayatProduksi() {
               <table style={{ width: '100%' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#F8F8F6', borderBottom: '1px solid #E8E8E6' }}>
-                    {[['Tanggal', false], ['Produk', false], ['Jumlah', true], ['Biaya', true], ['Catatan', false], ['Invoice', false], ['', false]].map(([h, right]) => (
+                    {[['Tanggal', false], ['Produk', false], ['Staff', false], ['Jumlah', true], ['Biaya', true], ['Catatan', false], ['Invoice', false], ['', false]].map(([h, right]) => (
                       <th key={h as string} style={{ color: '#6B6B6B' }}
                         className={`px-4 py-2.5 text-xs font-medium uppercase tracking-wider ${right ? 'text-right' : 'text-left'}`}>{h}</th>
                     ))}
@@ -428,6 +508,7 @@ export default function RiwayatProduksi() {
                       <tr key={row.id} style={{ borderBottom: '1px solid #F0F0EE' }} className="hover:bg-[#FAFAF9]">
                         <td className="px-4 py-3" style={{ color: '#6B6B6B', fontSize: 12, whiteSpace: 'nowrap' }}>{fmtDate(row.produced_at)}</td>
                         <td className="px-4 py-3" style={{ color: '#0E0E0E', fontSize: 13 }}>{row.item?.name ?? '—'}</td>
+                        <td className="px-4 py-3" style={{ color: '#6B6B6B', fontSize: 12, whiteSpace: 'nowrap' }}>{row.staff_name ?? '—'}</td>
                         <td className="px-4 py-3 text-right" style={{ color: '#7C3AED', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap' }}>{fmtNum(row.quantity)} {row.item?.unit}</td>
                         <td className="px-4 py-3 text-right" style={{ whiteSpace: 'nowrap' }}>
                           {biaya > 0
@@ -450,10 +531,16 @@ export default function RiwayatProduksi() {
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          <button onClick={() => deleteEntry('production_logs', row.id)}
-                            style={{ background: 'none', border: '1px solid #FECACA', borderRadius: 6, width: 28, height: 28, cursor: 'pointer', color: '#DC2626', fontSize: 14, lineHeight: 1 }}>
-                            ×
-                          </button>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button onClick={() => openEdit(row)}
+                              style={{ background: 'none', border: '1px solid #E8E8E6', borderRadius: 6, width: 28, height: 28, cursor: 'pointer', color: '#6B6B6B', fontSize: 13, lineHeight: 1 }}>
+                              ✏
+                            </button>
+                            <button onClick={() => deleteEntry('production_logs', row.id)}
+                              style={{ background: 'none', border: '1px solid #FECACA', borderRadius: 6, width: 28, height: 28, cursor: 'pointer', color: '#DC2626', fontSize: 14, lineHeight: 1 }}>
+                              ×
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     )
