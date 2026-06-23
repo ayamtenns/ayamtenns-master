@@ -163,9 +163,9 @@ export default function Produksi() {
     const today = new Date().toISOString().slice(0, 10)
     const isBackdate = distDate < today
     // source→target field mapping
-    const sourceField = distSource === 'Gudang' ? 'stock_produksi' : distSource === 'BSD' ? 'stock' : 'stock_gading'
-    const targetField = target === 'BSD' ? 'stock' : 'stock_gading'
     const effectiveTarget = distSource === 'BSD' ? 'Gading' : distSource === 'Gading' ? 'BSD' : target
+    const sourceField = distSource === 'Gudang' ? 'stock_produksi' : distSource === 'BSD' ? 'stock' : 'stock_gading'
+    const targetField = effectiveTarget === 'BSD' ? 'stock' : 'stock_gading'
     try {
       for (const item of distributableItems) {
         const q = parseQty(distQty[item.item_id] || '0')
