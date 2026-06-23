@@ -1022,7 +1022,7 @@ export default function Transfers() {
                             style={{ backgroundColor: '#7C3AED', color: '#FFFFFF', border: 'none', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
                             {isLoading ? '...' : '✏️ Edit'}
                           </button>
-                          <button onClick={e => { e.stopPropagation(); setReceivedDate(new Date().toISOString().slice(0, 10)); setReceivingReq(req) }} disabled={isLoading}
+                          <button onClick={e => { e.stopPropagation(); setReceivedDate(req.request_date); setReceivingReq(req) }} disabled={isLoading}
                             style={{ backgroundColor: '#16A34A', color: '#FFFFFF', border: 'none', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
                             {isLoading ? '...' : '✓ Diterima'}
                           </button>
