@@ -21,11 +21,14 @@ interface ProdItem {
   item_name: string
   unit: string
   stock_produksi: number
+  stock: number
+  stock_gading: number
   recipe_name: string
 }
 
 type QtyMap = Record<string, string>
 type Tab = 'produksi' | 'distribusi'
+type DistSource = 'Gudang' | 'BSD' | 'Gading'
 type Target = 'BSD' | 'Gading'
 
 function parseQty(val: string): number {
@@ -40,6 +43,7 @@ export default function Produksi() {
   const [qty,        setQty]        = useState<QtyMap>({})
   const [distQty,    setDistQty]    = useState<QtyMap>({})
   const [target,     setTarget]     = useState<Target>('BSD')
+  const [distSource, setDistSource] = useState<DistSource>('Gudang')
   const [notes,      setNotes]      = useState('')
   const [loading,    setLoading]    = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -58,7 +62,7 @@ export default function Produksi() {
     // sub_recipes joined to output item for name/unit/stock_produksi
     const { data } = await supabase
       .from('sub_recipes')
-      .select('name, output_item_id, items:output_item_id(id, name, unit, stock_produksi)')
+      .select('name, output_item_id, items:output_item_id(id, name, unit, stock_produksi, stock, stock_gading)')
       .not('output_item_id', 'is', null)
       .order('name')
 
@@ -70,6 +74,8 @@ export default function Produksi() {
           item_name: r.items.name,
           unit: r.items.unit,
           stock_produksi: r.items.stock_produksi ?? 0,
+          stock: r.items.stock ?? 0,
+          stock_gading: r.items.stock_gading ?? 0,
           recipe_name: r.name,
         }))
       // deduplicate by item_id (in case multiple recipes for same item)
@@ -156,39 +162,41 @@ export default function Produksi() {
     setSubmitting(true); setError('')
     const today = new Date().toISOString().slice(0, 10)
     const isBackdate = distDate < today
+    // source→target field mapping
+    const sourceField = distSource === 'Gudang' ? 'stock_produksi' : distSource === 'BSD' ? 'stock' : 'stock_gading'
+    const targetField = target === 'BSD' ? 'stock' : 'stock_gading'
+    const effectiveTarget = distSource === 'BSD' ? 'Gading' : distSource === 'Gading' ? 'BSD' : target
     try {
-      for (const item of items) {
+      for (const item of distributableItems) {
         const q = parseQty(distQty[item.item_id] || '0')
         if (!q || q <= 0) continue
-        if (!isBackdate && q > item.stock_produksi) {
-          setError(`Stok produksi ${item.item_name} tidak cukup (tersedia: ${parseFloat(item.stock_produksi.toFixed(2))} ${item.unit})`)
+        const srcStock = distSource === 'Gudang' ? item.stock_produksi : distSource === 'BSD' ? item.stock : item.stock_gading
+        if (!isBackdate && q > srcStock) {
+          setError(`Stok ${distSource === 'Gudang' ? 'produksi' : distSource} ${item.item_name} tidak cukup (tersedia: ${parseFloat(srcStock.toFixed(2))} ${item.unit})`)
           setSubmitting(false)
           return
         }
         if (!isBackdate) {
-          // update stok hanya untuk entry hari ini
-          const stockField = target === 'BSD' ? 'stock' : 'stock_gading'
           const { data: cur } = await supabase
-            .from('items').select(`${stockField}, stock_produksi`).eq('id', item.item_id).single()
+            .from('items').select(`${sourceField}, ${targetField}`).eq('id', item.item_id).single()
           if (!cur) continue
           const { error: e } = await supabase
             .from('items')
             .update({
-              stock_produksi: (cur.stock_produksi ?? 0) - q,
-              [stockField]: ((cur as any)[stockField] ?? 0) + q,
+              [sourceField]: ((cur as any)[sourceField] ?? 0) - q,
+              [targetField]: ((cur as any)[targetField] ?? 0) + q,
             })
             .eq('id', item.item_id)
           if (e) throw e
         }
-        // log distribusi (selalu)
         const { error: e2 } = await supabase
           .from('distribution_logs')
-          .insert({ item_id: item.item_id, quantity: q, target, distributed_at: distDate })
+          .insert({ item_id: item.item_id, quantity: q, target: effectiveTarget, distributed_at: distDate })
         if (e2) throw e2
       }
       await loadItems()
       setDistQty({})
-      setDone(`Distribusi ke ${target} berhasil!`)
+      setDone(`Distribusi ke ${effectiveTarget} berhasil!`)
       setTimeout(() => setDone(''), 3000)
     } catch (e: any) {
       setError(e.message ?? 'Gagal distribusi')
@@ -203,7 +211,10 @@ export default function Produksi() {
   )
 
   const isBackdateMode = distDate < new Date().toISOString().slice(0, 10)
-  const distributableItems = isBackdateMode ? items : items.filter(i => parseFloat(i.stock_produksi.toFixed(2)) > 0)
+  const distributableItems = isBackdateMode ? items : items.filter(i => {
+    const s = distSource === 'Gudang' ? i.stock_produksi : distSource === 'BSD' ? i.stock : i.stock_gading
+    return parseFloat(s.toFixed(2)) > 0
+  })
 
   return (
     <div style={{ minHeight: '100vh', background: bg, fontFamily: 'system-ui, sans-serif', maxWidth: 480, margin: '0 auto' }}>
@@ -338,29 +349,52 @@ export default function Produksi() {
               )}
             </div>
 
-            {/* Target toggle */}
+            {/* Source + Target */}
             <div style={{ background: white, borderRadius: 12, padding: '14px 16px', marginBottom: 12, border: `1px solid ${bdr}` }}>
-              <div style={{ fontSize: 13, color: muted, marginBottom: 10 }}>Distribusi ke:</div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                {(['BSD', 'Gading'] as Target[]).map(t => (
-                  <button key={t} onClick={() => setTarget(t)}
+              <div style={{ fontSize: 13, color: muted, marginBottom: 10 }}>Dari:</div>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+                {(['Gudang', 'BSD', 'Gading'] as DistSource[]).map(s => (
+                  <button key={s} onClick={() => { setDistSource(s); setDistQty({}) }}
                     style={{
-                      flex: 1, padding: '10px 0', border: `2px solid ${target === t ? ink : bdr}`,
-                      borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: 'pointer',
-                      background: target === t ? ink : white,
-                      color: target === t ? white : ink,
+                      flex: 1, padding: '8px 0', border: `2px solid ${distSource === s ? ink : bdr}`,
+                      borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                      background: distSource === s ? ink : white,
+                      color: distSource === s ? white : ink,
                     }}>
-                    {t}
+                    {s === 'Gudang' ? '🏭 Gudang' : s}
                   </button>
                 ))}
               </div>
+              {distSource === 'Gudang' && (
+                <>
+                  <div style={{ fontSize: 13, color: muted, marginBottom: 10 }}>Ke:</div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {(['BSD', 'Gading'] as Target[]).map(t => (
+                      <button key={t} onClick={() => setTarget(t)}
+                        style={{
+                          flex: 1, padding: '8px 0', border: `2px solid ${target === t ? ink : bdr}`,
+                          borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                          background: target === t ? ink : white,
+                          color: target === t ? white : ink,
+                        }}>
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+              {distSource !== 'Gudang' && (
+                <div style={{ fontSize: 13, color: muted }}>
+                  Ke: <strong style={{ color: ink }}>{distSource === 'BSD' ? 'Gading' : 'BSD'}</strong>
+                </div>
+              )}
             </div>
 
             {distributableItems.length === 0 ? (
               <div style={{ textAlign: 'center', padding: 40, color: muted }}>
                 <div style={{ fontSize: 32, marginBottom: 8 }}>📦</div>
-                <div>Belum ada stok produksi.</div>
-                <div style={{ fontSize: 13, marginTop: 4 }}>Catat produksi dulu di tab sebelah.</div>
+                <div>Belum ada stok di {distSource === 'Gudang' ? 'Gudang Produksi' : distSource}.</div>
+                {distSource === 'Gudang' && <div style={{ fontSize: 13, marginTop: 4 }}>Catat produksi dulu di tab sebelah.</div>}
               </div>
             ) : (
               distributableItems.map(item => (
@@ -368,8 +402,10 @@ export default function Produksi() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
                     <div style={{ fontWeight: 700, fontSize: 16, color: ink }}>{item.item_name}</div>
                     <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: 12, color: muted }}>Tersedia</div>
-                      <div style={{ fontWeight: 700, color: amber }}>{parseFloat(item.stock_produksi.toFixed(2))} {item.unit}</div>
+                      <div style={{ fontSize: 12, color: muted }}>Tersedia ({distSource === 'Gudang' ? 'Gudang' : distSource})</div>
+                      <div style={{ fontWeight: 700, color: amber }}>
+                        {parseFloat((distSource === 'Gudang' ? item.stock_produksi : distSource === 'BSD' ? item.stock : item.stock_gading).toFixed(2))} {item.unit}
+                      </div>
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -403,7 +439,7 @@ export default function Produksi() {
         ) : (
           <button onClick={submitDistribusi} disabled={submitting || distributableItems.length === 0}
             style={{ width: '100%', padding: '16px 0', borderRadius: 12, border: 'none', background: submitting || distributableItems.length === 0 ? muted : ink, color: white, fontSize: 17, fontWeight: 700, cursor: submitting ? 'not-allowed' : 'pointer' }}>
-            {submitting ? 'Memproses...' : `📦 Distribusi ke ${target}`}
+            {submitting ? 'Memproses...' : `📦 ${distSource} → ${distSource === 'BSD' ? 'Gading' : distSource === 'Gading' ? 'BSD' : target}`}
           </button>
         )}
       </div>
