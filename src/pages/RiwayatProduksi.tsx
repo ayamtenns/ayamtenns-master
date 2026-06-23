@@ -55,6 +55,19 @@ export default function RiwayatProduksi() {
   const [tab, setTab] = useState<'produksi' | 'distribusi'>('produksi')
   const [loading, setLoading] = useState(false)
 
+  // Available items for adding new log
+  const [availItems, setAvailItems] = useState<{ id: string; name: string; unit: string }[]>([])
+
+  // Add log state
+  const [showAdd,   setShowAdd]   = useState(false)
+  const [addItemId, setAddItemId] = useState('')
+  const [addQty,    setAddQty]    = useState('')
+  const [addDate,   setAddDate]   = useState('')
+  const [addNotes,  setAddNotes]  = useState('')
+  const [addStaff,  setAddStaff]  = useState('')
+  const [addSaving, setAddSaving] = useState(false)
+  const [addError,  setAddError]  = useState('')
+
   // Edit log state
   const [editingLog, setEditingLog]   = useState<ProdLog | null>(null)
   const [editQty,    setEditQty]      = useState('')
@@ -70,6 +83,20 @@ export default function RiwayatProduksi() {
   const [cleanPreview, setCleanPreview]   = useState<{ id: string; photo_url: string | null; photo_url_2: string | null }[] | null>(null)
   const [cleanLoading, setCleanLoading]   = useState(false)
   const [cleanDone, setCleanDone]         = useState('')
+
+  useEffect(() => {
+    supabase.from('sub_recipes').select('output_item_id, items:output_item_id(id, name, unit)')
+      .not('output_item_id', 'is', null)
+      .then(({ data }) => {
+        const seen = new Set<string>()
+        const list: { id: string; name: string; unit: string }[] = []
+        for (const r of data ?? []) {
+          const item = (r as any).items
+          if (item && !seen.has(item.id)) { seen.add(item.id); list.push(item) }
+        }
+        setAvailItems(list.sort((a, b) => a.name.localeCompare(b.name)))
+      })
+  }, [])
 
   useEffect(() => { load() }, [month, year])
 
@@ -149,6 +176,40 @@ export default function RiwayatProduksi() {
 
     await supabase.from(table).delete().eq('id', id)
     load()
+  }
+
+  function openAdd() {
+    setAddItemId(availItems[0]?.id ?? '')
+    setAddQty('')
+    setAddDate(new Date().toISOString().slice(0, 10))
+    setAddNotes('')
+    setAddStaff('')
+    setAddError('')
+    setShowAdd(true)
+  }
+
+  async function saveAdd() {
+    const qty = parseFloat(addQty)
+    if (!addItemId) { setAddError('Pilih item dulu.'); return }
+    if (!addQty || isNaN(qty) || qty <= 0) { setAddError('Jumlah harus lebih dari 0.'); return }
+    if (!addDate) { setAddError('Tanggal wajib diisi.'); return }
+    setAddSaving(true); setAddError('')
+    try {
+      const { data: cur } = await supabase.from('items').select('stock_produksi').eq('id', addItemId).single()
+      if (cur) await supabase.from('items').update({ stock_produksi: (cur.stock_produksi ?? 0) + qty }).eq('id', addItemId)
+      await supabase.from('production_logs').insert({
+        item_id: addItemId,
+        quantity: qty,
+        produced_at: addDate,
+        notes: addNotes.trim() || null,
+        staff_name: addStaff.trim() || null,
+      })
+      setShowAdd(false)
+      load()
+    } catch (e: any) {
+      setAddError(e.message ?? 'Gagal menyimpan.')
+    }
+    setAddSaving(false)
   }
 
   function openEdit(row: ProdLog) {
@@ -349,6 +410,44 @@ export default function RiwayatProduksi() {
         </div>
       )}
 
+      {/* Add Log Modal */}
+      {showAdd && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ backgroundColor: '#FFFFFF', borderRadius: 16, width: '100%', maxWidth: 440, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+            <div style={{ padding: '18px 24px', borderBottom: '1px solid #E8E8E6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontFamily: "'Archivo Black', sans-serif", fontSize: 15, color: '#0E0E0E' }}>Tambah Log Produksi</div>
+              <button onClick={() => setShowAdd(false)} style={{ background: '#F2F2F0', border: 'none', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', fontSize: 16 }}>×</button>
+            </div>
+            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {[
+                { label: 'Item', content: (
+                  <select value={addItemId} onChange={e => setAddItemId(e.target.value)}
+                    style={{ width: '100%', padding: '8px 10px', fontSize: 14, fontWeight: 600, border: '1px solid #E8E8E6', borderRadius: 8, outline: 'none', color: '#0E0E0E', backgroundColor: '#F8F8F6', boxSizing: 'border-box' as const }}>
+                    {availItems.map(i => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
+                  </select>
+                )},
+                { label: 'Tanggal', content: <input type="date" value={addDate} onChange={e => setAddDate(e.target.value)} style={{ width: '100%', padding: '8px 10px', fontSize: 14, fontWeight: 600, border: '1px solid #E8E8E6', borderRadius: 8, outline: 'none', color: '#0E0E0E', backgroundColor: '#F8F8F6', boxSizing: 'border-box' as const }} /> },
+                { label: 'Jumlah', content: <input type="number" min="0.1" step="0.1" value={addQty} onChange={e => setAddQty(e.target.value)} placeholder="0" style={{ width: '100%', padding: '8px 10px', fontSize: 14, fontWeight: 600, border: '1px solid #E8E8E6', borderRadius: 8, outline: 'none', color: '#7C3AED', backgroundColor: '#F8F8F6', boxSizing: 'border-box' as const }} /> },
+                { label: 'Nama Staff', content: <input type="text" value={addStaff} onChange={e => setAddStaff(e.target.value)} placeholder="Nama staff..." style={{ width: '100%', padding: '8px 10px', fontSize: 14, border: '1px solid #E8E8E6', borderRadius: 8, outline: 'none', color: '#0E0E0E', backgroundColor: '#F8F8F6', boxSizing: 'border-box' as const }} /> },
+                { label: 'Catatan', content: <input type="text" value={addNotes} onChange={e => setAddNotes(e.target.value)} placeholder="Opsional..." style={{ width: '100%', padding: '8px 10px', fontSize: 14, border: '1px solid #E8E8E6', borderRadius: 8, outline: 'none', color: '#0E0E0E', backgroundColor: '#F8F8F6', boxSizing: 'border-box' as const }} /> },
+              ].map(({ label, content }) => (
+                <div key={label}>
+                  <label style={{ fontSize: 11, color: '#6B6B6B', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>{label}</label>
+                  {content}
+                </div>
+              ))}
+              {addError && <div style={{ fontSize: 13, color: '#DC2626', backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '8px 12px' }}>{addError}</div>}
+              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+                <button onClick={() => setShowAdd(false)} style={{ flex: 1, padding: '10px', borderRadius: 10, border: '1px solid #E8E8E6', backgroundColor: '#FFFFFF', color: '#6B6B6B', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Batal</button>
+                <button onClick={saveAdd} disabled={addSaving} style={{ flex: 2, padding: '10px', borderRadius: 10, border: 'none', backgroundColor: addSaving ? '#ABABAB' : '#7C3AED', color: '#FFFFFF', fontSize: 13, fontWeight: 700, cursor: addSaving ? 'not-allowed' : 'pointer' }}>
+                  {addSaving ? 'Menyimpan...' : '+ Tambah'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Month/year picker */}
       <div className="px-8 py-4" style={{ borderBottom: '1px solid #E8E8E6' }}>
         <div className="flex items-center gap-3">
@@ -468,7 +567,7 @@ export default function RiwayatProduksi() {
 
         {/* Log detail tabs */}
         <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E8E8E6', borderRadius: 16, overflow: 'hidden' }}>
-          <div style={{ display: 'flex', borderBottom: '1px solid #E8E8E6' }}>
+          <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #E8E8E6' }}>
             {([['produksi', 'Log Produksi', '#7C3AED'], ['distribusi', 'Log Distribusi', '#2563EB']] as const).map(([key, label, color]) => (
               <button
                 key={key}
@@ -481,6 +580,12 @@ export default function RiwayatProduksi() {
                 }}
               >{label}</button>
             ))}
+            {tab === 'produksi' && (
+              <button onClick={openAdd}
+                style={{ margin: '0 12px', padding: '6px 14px', fontSize: 12, fontWeight: 700, border: '1px solid #7C3AED', borderRadius: 8, backgroundColor: '#FFFFFF', color: '#7C3AED', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                + Tambah Log
+              </button>
+            )}
           </div>
 
           {loading ? (
