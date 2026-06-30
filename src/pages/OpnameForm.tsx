@@ -32,8 +32,12 @@ export default function OpnameForm({ branch }: OpnameFormProps) {
 
   useEffect(() => {
     supabase.from('items').select('*').order('category').order('name')
-      .then(({ data }) => { setItems(data ?? []); setLoading(false) })
-  }, [])
+      .then(({ data }) => {
+        const filtered = branch === 'Gading' ? (data ?? []).filter(i => i.category === 'AYAM') : (data ?? [])
+        setItems(filtered)
+        setLoading(false)
+      })
+  }, [branch])
 
   const categories = [...new Set(items.map(i => i.category))]
 
