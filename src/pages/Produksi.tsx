@@ -170,12 +170,6 @@ export default function Produksi() {
       for (const item of distributableItems) {
         const q = parseQty(distQty[item.item_id] || '0')
         if (!q || q <= 0) continue
-        const srcStock = distSource === 'Gudang' ? item.stock_produksi : distSource === 'BSD' ? item.stock : item.stock_gading
-        if (!isBackdate && q > srcStock) {
-          setError(`Stok ${distSource === 'Gudang' ? 'produksi' : distSource} ${item.item_name} tidak cukup (tersedia: ${parseFloat(srcStock.toFixed(2))} ${item.unit})`)
-          setSubmitting(false)
-          return
-        }
         if (!isBackdate) {
           const { data: cur } = await supabase
             .from('items').select(`${sourceField}, ${targetField}`).eq('id', item.item_id).single()
@@ -397,15 +391,20 @@ export default function Produksi() {
                 {distSource === 'Gudang' && <div style={{ fontSize: 13, marginTop: 4 }}>Catat produksi dulu di tab sebelah.</div>}
               </div>
             ) : (
-              distributableItems.map(item => (
-                <div key={item.item_id} style={{ background: white, borderRadius: 12, padding: '14px 16px', marginBottom: 10, border: `1px solid ${bdr}` }}>
+              distributableItems.map(item => {
+                const srcStock = distSource === 'Gudang' ? item.stock_produksi : distSource === 'BSD' ? item.stock : item.stock_gading
+                const curQty = parseQty(distQty[item.item_id] || '0')
+                const overStock = curQty > srcStock
+                return (
+                <div key={item.item_id} style={{ background: white, borderRadius: 12, padding: '14px 16px', marginBottom: 10, border: `1px solid ${overStock ? amber : bdr}` }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
                     <div style={{ fontWeight: 700, fontSize: 16, color: ink }}>{item.item_name}</div>
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontSize: 12, color: muted }}>Tersedia ({distSource === 'Gudang' ? 'Gudang' : distSource})</div>
-                      <div style={{ fontWeight: 700, color: amber }}>
-                        {parseFloat((distSource === 'Gudang' ? item.stock_produksi : distSource === 'BSD' ? item.stock : item.stock_gading).toFixed(2))} {item.unit}
-                      </div>
+                      <button onClick={() => setDistQty(p => ({ ...p, [item.item_id]: String(srcStock) }))}
+                        style={{ fontWeight: 700, color: amber, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted' }}>
+                        {parseFloat(srcStock.toFixed(2))} {item.unit} · Max
+                      </button>
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -416,14 +415,20 @@ export default function Produksi() {
                       value={distQty[item.item_id] ?? ''}
                       placeholder="0"
                       onChange={e => setDistQty(p => ({ ...p, [item.item_id]: e.target.value }))}
-                      style={{ flex: 1, height: 44, border: `1px solid ${bdr}`, borderRadius: 10, textAlign: 'center', fontSize: 18, fontWeight: 700, color: ink, background: bg, outline: 'none' }}
+                      style={{ flex: 1, height: 44, border: `1px solid ${overStock ? amber : bdr}`, borderRadius: 10, textAlign: 'center', fontSize: 18, fontWeight: 700, color: ink, background: bg, outline: 'none' }}
                     />
                     <button onClick={() => setDistQty(p => ({ ...p, [item.item_id]: String((parseQty(p[item.item_id] || '0') + 1)) }))}
                       style={{ width: 44, height: 44, borderRadius: 10, border: `1px solid ${bdr}`, background: bg, fontSize: 20, cursor: 'pointer', color: ink }}>+</button>
                     <div style={{ width: 40, fontSize: 13, color: muted, textAlign: 'right' }}>{item.unit}</div>
                   </div>
+                  {overStock && (
+                    <div style={{ marginTop: 8, fontSize: 12, color: amber, fontWeight: 600 }}>
+                      ⚠ Melebihi stok tersedia ({parseFloat(srcStock.toFixed(2))} {item.unit}) — stok akan jadi minus.
+                    </div>
+                  )}
                 </div>
-              ))
+                )
+              })
             )}
           </>
         )}
